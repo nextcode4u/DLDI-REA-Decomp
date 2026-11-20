@@ -5,7 +5,7 @@ Use [nrio-raw-readonly.nds](compiled/nrio-raw-readonly.nds) for the first test. 
 | Build | Standalone DLDI | USB app |
 | --- | --- | --- |
 | Read-only dump | [nrio-raw-readonly.dldi](compiled/nrio-raw-readonly.dldi) | [nrio-raw-readonly.nds](compiled/nrio-raw-readonly.nds) |
-| Read-only spare dump | [nrio-raw-spare.dldi](compiled/nrio-raw-spare.dldi) | [nrio-raw-spare.nds](compiled/nrio-raw-spare.nds) |
+| Read-only spare dump | [nrio-raw-spare-readonly.dldi](compiled/nrio-raw-spare-readonly.dldi) | [nrio-raw-spare-readonly.nds](compiled/nrio-raw-spare-readonly.nds) |
 | Spare recovery write | [nrio-raw-spare-write.dldi](compiled/nrio-raw-spare-write.dldi) | [nrio-raw-spare-write.nds](compiled/nrio-raw-spare-write.nds) |
 | Main-area recovery write | [nrio-raw-recovery.dldi](compiled/nrio-raw-recovery.dldi) | [nrio-raw-recovery.nds](compiled/nrio-raw-recovery.nds) |
 

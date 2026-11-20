@@ -267,7 +267,7 @@ if __name__ == '__main__':
                     check_failure(image, chip, failure)
         print(f'{mode}: physical sector 0, full capacity and write policy passed on both geometries')
     print('Cross-block writes and erase, program and readback failure handling passed on both geometries')
-    spare = (path / 'nrio-raw-spare.nds').read_bytes()
+    spare = (path / 'nrio-raw-spare-readonly.nds').read_bytes()
     check_spare(spare, 0x1500d3ec, 524_288)
     check_spare(spare, 0x3500d5ec, 1_048_576)
     print('spare: page ordering, capacity, high row bits and write rejection passed')

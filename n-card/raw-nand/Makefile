@@ -27,7 +27,7 @@ CPPFLAGS := -DARM9 -isystem "$(call tool_path,$(DEVKITPRO)/libnds/include)" \
 GCC_SEARCH := -B"$(call tool_path,$(GCC_LIBEXEC))/" -B"$(call tool_path,$(DEVKITARM)/bin)/"
 
 .PHONY: all clean
-all: $(BUILD)/nrio-raw-readonly.dldi $(BUILD)/nrio-raw-recovery.dldi $(BUILD)/nrio-raw-spare.dldi $(BUILD)/nrio-raw-spare-write.dldi
+all: $(BUILD)/nrio-raw-readonly.dldi $(BUILD)/nrio-raw-recovery.dldi $(BUILD)/nrio-raw-spare-readonly.dldi $(BUILD)/nrio-raw-spare-write.dldi
 
 $(BUILD)/read-only/%.o: source/%.c Makefile
 	@mkdir -p "$(@D)"
@@ -76,7 +76,7 @@ $(BUILD)/nrio-raw-readonly.elf: $(READ_ONLY_OBJECTS) linker.ld
 $(BUILD)/nrio-raw-recovery.elf: $(RECOVERY_OBJECTS) linker.ld
 	"$(LD)" -T linker.ld -o "$@" $(RECOVERY_OBJECTS)
 
-$(BUILD)/nrio-raw-spare.elf: $(SPARE_OBJECTS) linker.ld
+$(BUILD)/nrio-raw-spare-readonly.elf: $(SPARE_OBJECTS) linker.ld
 	"$(LD)" -T linker.ld -o "$@" $(SPARE_OBJECTS)
 
 $(BUILD)/nrio-raw-spare-write.elf: $(SPARE_WRITE_OBJECTS) linker.ld
