@@ -190,6 +190,20 @@ def check_cross_block(image, nand_id):
     assert device.vm.mem_read(RAM, 1024) == payload
 
 
+def write_error(device):
+    assert device.run(2, 0xfffffffd, 0, RAM + 0x2000)
+    return struct.unpack('<III', device.vm.mem_read(RAM + 0x2000, 12))
+
+
+def check_banner_preflight(image, nand_id):
+    device = recovery_device(image, nand_id)
+    device.flash[1] = b'\xff' * 2048 + b'\x00' + b'\xff' * 63
+    device.vm.mem_write(RAM, b'\x23' * 2048)
+    assert not device.run(3, 16, 4, RAM)
+    assert write_error(device) == (2, 1, 0)
+    assert not device.erased_blocks and not device.programmed_rows
+
+
 def check_failure(image, nand_id, failure, pages_written=1):
     device = recovery_device(image, nand_id)
     device.failure = failure
@@ -198,6 +212,7 @@ def check_failure(image, nand_id, failure, pages_written=1):
     assert device.erased_blocks == [0]
     expected_rows = {'erase': [], 'program': [0], 'readback': list(range(pages_written))}
     assert device.programmed_rows == expected_rows[failure]
+    assert write_error(device) == ({'erase': 3, 'program': 4, 'readback': 6}[failure], 0, 0)
     assert not device.run(4)  # clearStatus reports the latched error.
     assert not device.run(3, device.pages_per_block * 4, 1, RAM)
     assert device.erased_blocks == [0]
@@ -263,6 +278,7 @@ if __name__ == '__main__':
             check(image, mode == 'recovery', chip)
             if mode == 'recovery':
                 check_cross_block(image, chip)
+                check_banner_preflight(image, chip)
                 for failure in ('erase', 'program', 'readback'):
                     check_failure(image, chip, failure)
         print(f'{mode}: physical sector 0, full capacity and write policy passed on both geometries')

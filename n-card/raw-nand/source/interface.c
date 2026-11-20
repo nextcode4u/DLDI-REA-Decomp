@@ -6,7 +6,7 @@ static u32 nand_id;
 
 #ifdef RAW_NAND_WRITE
 static u8 *workspace;
-static bool write_failed;
+static struct nrio_raw_write_error write_error;
 #endif
 
 bool nrio_raw_startup(void)
@@ -14,7 +14,9 @@ bool nrio_raw_startup(void)
     sector_count = 0;
 #ifdef RAW_NAND_WRITE
     workspace = 0;
-    write_failed = false;
+    write_error.stage = NRIO_RAW_WRITE_NONE;
+    write_error.page = 0;
+    write_error.detail = 0;
 #endif
 
     if (!nand_read_id(&nand_id)) {
@@ -55,7 +57,7 @@ bool nrio_raw_inserted(void)
 bool nrio_raw_clear(void)
 {
 #ifdef RAW_NAND_WRITE
-    return !write_failed;
+    return write_error.stage == NRIO_RAW_WRITE_NONE;
 #else
     return true;
 #endif
@@ -93,6 +95,11 @@ bool nrio_raw_read(u32 sector, u32 count, void *buffer)
         return true;
     }
 #ifdef RAW_NAND_WRITE
+    if (sector == NRIO_RAW_WRITE_ERROR_LBA && count == 0) {
+        struct nrio_raw_write_error *result = buffer;
+        *result = write_error;
+        return true;
+    }
     if (sector == NRIO_RAW_WORKSPACE_LBA && count >= pages_per_block * PAGE_RECORD_SIZE &&
         (u32)buffer % 4 == 0) {
         workspace = buffer;
@@ -132,14 +139,10 @@ bool nrio_raw_read(u32 sector, u32 count, void *buffer)
 bool nrio_raw_write(u32 sector, u32 count, const void *buffer)
 {
 #ifdef RAW_NAND_WRITE
-    if (!workspace || write_failed || !buffer || !valid_range(sector, count)) {
+    if (!workspace || write_error.stage != NRIO_RAW_WRITE_NONE || !buffer || !valid_range(sector, count)) {
         return false;
     }
-    if (!restore_sectors(sector, count, buffer, pages_per_block, workspace)) {
-        write_failed = true;
-        return false;
-    }
-    return true;
+    return restore_sectors(sector, count, buffer, pages_per_block, workspace, &write_error);
 #else
     (void)sector;
     (void)count;

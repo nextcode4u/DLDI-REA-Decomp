@@ -31,7 +31,7 @@ Take and retain a full read-only image before using the write-enabled build. Use
 
 ## USB integration and rebuild
 
-Stock `nrio-usb-disk` gets disk capacity from a FAT or MBR header. The patches query the `NRWR` driver for physical capacity and bind the erase-block buffer instead. They also report write protection for the read-only variant and reject out-of-range USB requests before calling DLDI. The private capacity and buffer commands are only called by the USB app during initialization. The prebuilt USB apps require `NRWR` and have the first embedded DLDI magic byte changed from `0xED` to `0xEE` so a launcher using standard DLDI signature matching leaves the embedded driver in place. The standalone DLDIs retain standard magic for patching.
+Stock `nrio-usb-disk` gets disk capacity from a FAT or MBR header. The patches query the `NRWR` driver for physical capacity and bind the erase-block buffer instead. They also report write protection for the read-only variant and reject out-of-range USB requests before calling DLDI. The USB app calls private commands to obtain capacity and bind the erase-block workspace at startup. Updated write-enabled builds also report the stage and physical NAND page of the first failed write on the DS screen. The prebuilt USB apps require `NRWR` and have the first embedded DLDI magic byte changed from `0xED` to `0xEE` so a launcher using standard DLDI signature matching leaves the embedded driver in place. The standalone DLDIs retain standard magic for patching.
 
 - [Apache Thunder fork patch](usb/fork.patch), built against [b9b781b](https://github.com/ApacheThunder/nrio-usb-disk/tree/b9b781bf5deec5096cbc517432878430ac0e58c6).
 - [Asie upstream patch](usb/upstream.patch), for [58dbb2d](https://github.com/asiekierka/nrio-usb-disk/tree/58dbb2dba8b49e1cf4c25e26c906bafb3228bace).
@@ -59,3 +59,9 @@ After the spare write, Apache Thunder reported that **Blowfish initialization an
 After the spare-sector 0 repair restored Blowfish initialization and the banner, the card still stopped at a white screen. Apache Thunder then ran a custom uDisk updater targeting the block table at `0x8000`. Their updater also has a variant for the table at `0x40000`. The `0x8000` update restored full boot on this ExpressCard.
 
 Apache Thunder also reported an earlier “device not ready” error while attempting a separate banner change. The cause of that error and the result of the banner change remain unconfirmed. The `0x8000` result applies to the tested card and updater.
+
+### Banner write at byte offset `0x2000`
+
+The reported `Write error [16, 2048]` describes a 2,048-byte USB write starting at LBA 16, which maps to NAND page 4. Page 4 is in erase block 0. Before erasing that block, the driver reads the first two pages and expects the first byte of their spare records to be `0xFF` or `0x55`. Boot-region spare data from the successful repair can contain other values. This is a plausible explanation for the error. An emulated banner write with such a byte reproduces the refusal before any erase or program command is issued.
+
+The updated write-enabled USB apps print a second error line. For example, `spare preflight: page 0x1, detail 0x0` identifies the rejected spare byte and confirms that the driver stopped before erase. Other messages identify a failed read, erase, program, or readback stage. The physical cause remains to be confirmed from that line. The preflight check remains enabled.

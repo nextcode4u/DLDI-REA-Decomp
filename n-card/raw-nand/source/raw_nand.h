@@ -22,7 +22,8 @@ bool nand_read_spare(u8 *buffer);
 #ifdef RAW_NAND_WRITE
 bool nand_erase_block(u32 page);
 bool nand_program_page(u32 page, const u8 *record);
-bool restore_sectors(u32 sector, u32 count, const u8 *buffer, u32 pages_per_block, u8 *workspace);
+bool restore_sectors(u32 sector, u32 count, const u8 *buffer, u32 pages_per_block, u8 *workspace,
+                     struct nrio_raw_write_error *error);
 #endif
 
 #endif

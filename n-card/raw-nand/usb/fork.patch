@@ -12,7 +12,7 @@ index 241e210..72e837f 100644
 
  # Libraries
 diff --git a/source/msc.c b/source/msc.c
-index 093e19f..8b43daf 100644
+index 093e19f..579fa97 100644
 --- a/source/msc.c
 +++ b/source/msc.c
 @@ -27,16 +27,48 @@
@@ -129,11 +129,22 @@ index 093e19f..8b43daf 100644
 
    ui_toggle_blink_write_activity();
    if (!(bufsize & 0x1FF) && !offset && io->writeSectors(lba, bufsize >> 9, buffer)) {
-@@ -188,6 +245,10 @@ ITCM_CODE int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
+@@ -188,6 +245,21 @@ ITCM_CODE int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
    } else {
      ui_toggle_blink_write_activity();
      printf(UI_COLOR_ERROR "Write error [%ld, %ld]\n", lba, bufsize);
 +    if (raw_driver) {
++      struct nrio_raw_write_error error;
++      if (io->readSectors(NRIO_RAW_WRITE_ERROR_LBA, 0, &error)) {
++        static const char *const stages[] = {
++          "none", "read before erase", "spare preflight", "erase",
++          "program", "readback", "readback mismatch"
++        };
++        if (error.stage > NRIO_RAW_WRITE_NONE && error.stage < sizeof(stages) / sizeof(stages[0])) {
++          printf(UI_COLOR_ERROR "%s: page 0x%lx, detail 0x%lx\n",
++                 stages[error.stage], (unsigned long)error.page, (unsigned long)error.detail);
++        }
++      }
 +      tud_msc_set_sense(lun, SCSI_SENSE_MEDIUM_ERROR, 0x0c, 0);
 +      return -1;
 +    }
@@ -142,10 +153,10 @@ index 093e19f..8b43daf 100644
  }
 diff --git a/source/nrio_raw_dldi.h b/source/nrio_raw_dldi.h
 new file mode 100755
-index 0000000..fe18e76
+index 0000000..d70afa5
 --- /dev/null
 +++ b/source/nrio_raw_dldi.h
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,36 @@
 +#ifndef NRIO_RAW_DLDI_PROTOCOL_H
 +#define NRIO_RAW_DLDI_PROTOCOL_H
 +
@@ -153,6 +164,7 @@ index 0000000..fe18e76
 +
 +#define NRIO_RAW_INFO_LBA UINT32_C(0xffffffff)
 +#define NRIO_RAW_WORKSPACE_LBA UINT32_C(0xfffffffe)
++#define NRIO_RAW_WRITE_ERROR_LBA UINT32_C(0xfffffffd)
 +#define NRIO_RAW_ABI_VERSION UINT32_C(1)
 +#define NRIO_RAW_WORKSPACE_BYTES (128u * (2048u + 64u))
 +
@@ -162,6 +174,22 @@ index 0000000..fe18e76
 +    uint32_t sectors;
 +    uint32_t workspace_bytes;
 +    uint32_t nand_id;
++};
++
++enum nrio_raw_write_stage {
++    NRIO_RAW_WRITE_NONE,
++    NRIO_RAW_WRITE_READ_BLOCK,
++    NRIO_RAW_WRITE_MARKER,
++    NRIO_RAW_WRITE_ERASE,
++    NRIO_RAW_WRITE_PROGRAM,
++    NRIO_RAW_WRITE_VERIFY_READ,
++    NRIO_RAW_WRITE_VERIFY_DATA,
++};
++
++struct nrio_raw_write_error {
++    uint32_t stage;
++    uint32_t page;
++    uint32_t detail;
 +};
 +
 +#endif

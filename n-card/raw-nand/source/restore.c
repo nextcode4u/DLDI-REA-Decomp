@@ -74,15 +74,25 @@ static bool erased(const u8 *record)
     return true;
 }
 
+static bool fail_write(struct nrio_raw_write_error *error, u32 stage, u32 page, u32 detail)
+{
+    error->stage = stage;
+    error->page = page;
+    error->detail = detail;
+    return false;
+}
+
 static bool rewrite_block(u32 page, u32 pages, u32 offset, u32 count,
-                          const u8 *input, u8 *records)
+                          const u8 *input, u8 *records, struct nrio_raw_write_error *error)
 {
     for (u32 i = 0; i < pages; ++i) {
         u8 *record = records + i * PAGE_RECORD_SIZE;
-        if (!read_page(page + i, record)) return false;
+        if (!read_page(page + i, record))
+            return fail_write(error, NRIO_RAW_WRITE_READ_BLOCK, page + i, 0);
         // Refuse unfamiliar markers on the first two physical pages.
         u8 marker = record[PAGE_SIZE];
-        if (i < 2 && marker != 0xff && marker != 0x55) return false;
+        if (i < 2 && marker != 0xff && marker != 0x55)
+            return fail_write(error, NRIO_RAW_WRITE_MARKER, page + i, marker);
     }
 
     bool changed = false;
@@ -102,21 +112,26 @@ static bool rewrite_block(u32 page, u32 pages, u32 offset, u32 count,
     }
     if (!changed) return true;
 
-    if (!nand_erase_block(page)) return false;
+    if (!nand_erase_block(page))
+        return fail_write(error, NRIO_RAW_WRITE_ERASE, page, 0);
     for (u32 i = 0; i < pages; ++i) {
         const u8 *record = records + i * PAGE_RECORD_SIZE;
-        if (!erased(record) && !nand_program_page(page + i, record)) return false;
+        if (!erased(record) && !nand_program_page(page + i, record))
+            return fail_write(error, NRIO_RAW_WRITE_PROGRAM, page + i, 0);
     }
 
     u8 verified[PAGE_RECORD_SIZE];
     for (u32 i = 0; i < pages; ++i) {
-        if (!read_page(page + i, verified) ||
-            !equal(verified, records + i * PAGE_RECORD_SIZE, PAGE_RECORD_SIZE)) return false;
+        if (!read_page(page + i, verified))
+            return fail_write(error, NRIO_RAW_WRITE_VERIFY_READ, page + i, 0);
+        if (!equal(verified, records + i * PAGE_RECORD_SIZE, PAGE_RECORD_SIZE))
+            return fail_write(error, NRIO_RAW_WRITE_VERIFY_DATA, page + i, 0);
     }
     return true;
 }
 
-bool restore_sectors(u32 sector, u32 count, const u8 *buffer, u32 pages_per_block, u8 *workspace)
+bool restore_sectors(u32 sector, u32 count, const u8 *buffer, u32 pages_per_block, u8 *workspace,
+                     struct nrio_raw_write_error *error)
 {
     u32 block_sectors = pages_per_block * UPDATES_PER_PAGE / UPDATES_PER_SECTOR;
     while (count) {
@@ -125,7 +140,7 @@ bool restore_sectors(u32 sector, u32 count, const u8 *buffer, u32 pages_per_bloc
         if (batch > count) batch = count;
         if (!rewrite_block((sector - offset) * UPDATES_PER_SECTOR / UPDATES_PER_PAGE,
                            pages_per_block, offset * UPDATES_PER_SECTOR,
-                           batch * UPDATES_PER_SECTOR, buffer, workspace)) return false;
+                           batch * UPDATES_PER_SECTOR, buffer, workspace, error)) return false;
         sector += batch;
         count -= batch;
         buffer += batch * SECTOR_SIZE;
