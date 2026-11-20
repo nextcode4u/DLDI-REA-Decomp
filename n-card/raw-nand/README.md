@@ -44,4 +44,4 @@ Build the standalone drivers from this folder with `make DEVKITPRO=/path/to/r20-
 
 ## Hardware results
 
-HxD on Windows showed the USB disk with 4,194,304 sectors of 512 bytes each (2 GiB) and displayed data starting at physical sector 0. The screenshot also shows `DSGBA PA` at byte offset `0x400` (sector 2). This confirms USB enumeration and reads at the start of NAND on the tested card. A full dump, reads at the end of the device, and physical recovery writes remain to be verified.
+HxD on Windows showed the USB disk with 4,194,304 sectors of 512 bytes each (2 GiB) and displayed data starting at physical sector 0. The screenshot also shows `DSGBA PA` at byte offset `0x400` (sector 2). This confirms USB enumeration and reads at the start of NAND on the tested card. Apache Thunder reported that the main-area recovery build successfully wrote the intended data to the damaged card. The card recovery attempt was unsuccessful. A full dump, reads at the end of the device, and physical spare-area access remain to be verified.
