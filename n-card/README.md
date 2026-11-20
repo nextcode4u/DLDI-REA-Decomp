@@ -36,7 +36,7 @@ python3 scripts/check_c_behavior.py
 
 The checks compare function results, driver state, buffer writes, and Slot-1 traffic with scripted NAND I/O. They cover 416 scenarios each at the original and relocated load addresses, including the public startup, read, and write entry points. The write transport checks add 16 scenarios at each address. They exercise the public sector-write entry point with simulated Slot-1 FIFO stalls, NAND-ready polling, and both erased and previously mapped blocks. They compare Slot-1 traffic and verify the requested sectors reach the FIFO and NAND program commands complete. To run these cases alone, use `python3 scripts/check_c_behavior.py --write-transport-only`.
 
-The C build mounted a physical N-Card through GodMode9i and the benchmark reported about 4.2 MB/s for both sequential and random 2 MiB reads. The write benchmark stalled with the C build and with the stock driver. Hardware write behavior and byte-for-byte verification of the all-C output remain open.
+Apache Thunder tested the C build on a physical N-Card using GodMode9i. It mounted the card, deleted the benchmark's pad file, and copied a file between folders successfully. The benchmark reported about 4.2 MB/s for sequential and random 2 MiB reads. Its write test stalled with both the C build and the stock driver. [Hardware test notes](compiled-from-c/README.md#hardware-test)
 
 ## Source tree
 

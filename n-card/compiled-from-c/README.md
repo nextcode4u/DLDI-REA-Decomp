@@ -1,11 +1,17 @@
 # NRIO built from C
 
-The included [nrio.dldi](nrio.dldi) builds all 60 driver routines from C. The build assembles the DLDI header and data tables and links the devkitARM startup and division runtime. It was built from source commit `eb3d5ba0eb26a41c19579f24189e0f97ceb46cb1` with devkitARM r20, GCC 4.1.1, and libnds. The artifact passed 832 original differential ARM emulation comparisons and 32 additional write transport comparisons against the byte-matching build across two load addresses. The driver mounted an N-Card through GodMode9i and the benchmark reported about 4.2 MB/s for reads. The write benchmark stalled with both the C build and the stock driver. Hardware writes remain unverified.
+The included [nrio.dldi](nrio.dldi) builds all 60 driver routines from C. The build assembles the DLDI header and data tables and links the devkitARM startup and division runtime. It was built from source commit `eb3d5ba0eb26a41c19579f24189e0f97ceb46cb1` with devkitARM r20, GCC 4.1.1, and libnds. The artifact passed 832 original differential ARM emulation comparisons and 32 additional write transport comparisons against the byte-matching build across two load addresses.
 
 | Binary | Size | SHA-256 |
 | --- | ---: | --- |
 | Compiled from C | 20,056 bytes | `fe5ae8880fd240828098efc37a6438b7a5994b3d31ac709e47d6eb60c08f56b4` |
 | [Original XuluMenu reference](../reference/nrio.dldi) | 19,724 bytes | `716937fa83dda22df3b27bf2c08ce9ea9a0209c6d64498a83b527c0dddae8978` |
+
+## Hardware test
+
+Apache Thunder reported that GodMode9i mounted a physical N-Card with this build. Using the C driver, they deleted the benchmark's pad file and copied a file from one folder to another successfully. This confirms basic filesystem writes on hardware. Checksum verification and post-reboot readback remain open.
+
+The benchmark reported about 4.2 MB/s for sequential and random 2 MiB reads. Its write test stalled with both this build and the stock driver, so hardware write throughput remains unmeasured.
 
 ## Byte differences
 
