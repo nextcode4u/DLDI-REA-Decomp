@@ -23,7 +23,7 @@ The spare-area USB build packs eight consecutive 64-byte spare records into each
 
 The writable spare build uses the same eight-record layout as the read-only spare dumper. Every 512-byte USB write supplies eight consecutive 64-byte spare records. The driver reads the whole affected erase block, replaces only the requested spare records, rewrites the block, and compares the readback of all main and spare bytes with the staged data. It preserves the supplied ECC and marker bytes verbatim. Use spare data intended for the exact main-page contents on the target card. Copying spare bytes between cards can also copy block markers and other metadata.
 
-Save main and spare dumps before writing. The same erase-block, bad-marker, and power-loss limitations described below apply. Spare writes remain unverified on physical hardware.
+Save main and spare dumps before writing. The same erase-block, bad-marker, and power-loss limitations described below apply. See the hardware results below for the first successful spare-area recovery write.
 
 ## Recovery writes
 
@@ -44,6 +44,12 @@ Build the standalone drivers from this folder with `make DEVKITPRO=/path/to/r20-
 
 ## Hardware results
 
-HxD on Windows showed the USB disk with 4,194,304 sectors of 512 bytes each (2 GiB) and displayed data starting at physical sector 0. The screenshot also shows `DSGBA PA` at byte offset `0x400` (sector 2). This confirms USB enumeration and reads at the start of NAND on the tested card. Apache Thunder reported that the main-area recovery build successfully wrote the intended data to the damaged card. The card recovery attempt was unsuccessful. A full dump and reads at the end of the device remain to be verified.
+HxD on Windows showed the USB disk with 4,194,304 sectors of 512 bytes each (2 GiB) and displayed data starting at physical sector 0. The screenshot also shows `DSGBA PA` at byte offset `0x400` (sector 2). This confirms USB enumeration and reads at the start of NAND on the tested card. Apache Thunder reported that the main-area recovery build successfully wrote the intended data to the damaged card. That main-area write alone did not restore Blowfish initialization or the banner. A full dump and reads at the end of the device remain to be verified.
 
-HxD also showed the spare-area device with 131,072 sectors (64 MiB). At spare-dump offset `0x035C8E00`, the screenshot shows the NRIO page marker `55 AA 55 AA` and the ECC triplet `5A 59 A5` repeated at offsets `+4`, `+8`, and `+12`. This matches the driver's normal metadata and ECC layout in the filesystem area. A comparison against a programmer dump and physical spare writes remain open.
+HxD also showed the spare-area device with 131,072 sectors (64 MiB). At spare-dump offset `0x035C8E00`, the screenshot shows the NRIO page marker `55 AA 55 AA` and the ECC triplet `5A 59 A5` repeated at offsets `+4`, `+8`, and `+12`. This matches the driver's normal metadata and ECC layout in the filesystem area. A comparison against a programmer dump remains open.
+
+### Spare-sector 0 recovery
+
+Apache Thunder used the writable spare-area USB build to copy USB sector 0 from a working N-Card to the damaged card. In this view, sector 0 is the 512-byte group of spare records for physical NAND pages 0–7. The recovery driver rewrites the affected erase block while preserving the staged main data.
+
+After the spare write, Apache Thunder reported that **Blowfish initialization and the banner worked again**. Full boot was still unconfirmed at the time of the report. The test involved all eight spare records, so it does not identify the specific page or byte range responsible for the fix.
