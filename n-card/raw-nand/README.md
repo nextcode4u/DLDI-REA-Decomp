@@ -46,6 +46,17 @@ Build the standalone drivers from this folder with `make DEVKITPRO=/path/to/r20-
 
 `python3 check_transport.py` runs the relocated DLDI extracted from each compiled NDS in Unicorn. It checks sector zero, the final sector, out-of-range rejection, both erase geometries, write gating, preservation of adjacent data and spare bytes across erase-block boundaries, and bad-marker refusal against a simulated NAND bridge. It also injects erase failures, program failures, and readback mismatches to check that the driver rejects later writes while allowing reads. The spare-area tests also check eight-record packing, capacity, the final physical page, read-only write rejection, exact spare replacement across erase blocks, main-data preservation, and failure handling. See the hardware observations below for the spare-area read test.
 
+## Boot layout notes
+
+Apache Thunder described two layouts used by different generations of cards.
+
+| Layout | Block table at `0x8000` | Block table at `0x40000` |
+| --- | --- | --- |
+| Early single-game DSFlash2 | Points to the flashed game, described at `0x40000` | In the described single-game layout, this offset is the start of the game |
+| Newer uDisk N-Card | Points to a safe-mode ROM | Points to the normal uDisk ROM, usually at `0x80000` |
+
+In the newer layout, the safe-mode ROM can update uDisk from a PC through the USB adapter. Apache reported that entering the update screen also requires a key combination. With the adapter absent, the safe-mode ROM proceeds to the second block table and loads normal uDisk. The exact key combination and card-specific offsets have not been verified here.
+
 ## Hardware results
 
 HxD on Windows showed the USB disk with 4,194,304 sectors of 512 bytes each (2 GiB) and displayed data starting at physical sector 0. The screenshot also shows `DSGBA PA` at byte offset `0x400` (sector 2). This confirms USB enumeration and reads at the start of NAND on the tested card. Apache Thunder reported that the main-area recovery build successfully wrote the intended data to the damaged card. That main-area write alone did not restore Blowfish initialization or the banner. A full dump and reads at the end of the device remain to be verified.
