@@ -24,4 +24,8 @@ python3 arm_banner.py nrio-raw-banner.nds \
 
 Boot the armed copy and submit `banner.bin` as one 2,048-byte USB write starting at byte offset `0x2000`. The DS rejects other ranges, sizes, or payloads. Before erasing, it compares all eight saved spare records against the target. It rewrites physical erase block 0 with the intended page 4 main and spare bytes, preserves the staged main and spare bytes of every other page, and verifies the entire block by reading it back.
 
-The write still erases a boot-critical block. Loss of power or a hardware erase or program failure can leave the card unbootable. The banner-only build has passed emulation. Physical writes with this build remain untested.
+The write still erases a boot-critical block. Loss of power or a hardware erase or program failure can leave the card unbootable. The banner-only build passed emulation on both erase-block geometries.
+
+## Hardware result
+
+Apache Thunder used the banner-only build to replace the first banner on a working N-Card. The DS menu displayed the new banner and the card still booted fully. Apache reported two banner copies in the region starting at `0x2000`. Changing the first copy was sufficient on the tested card. The purpose of the second copy and its behavior on other firmware remain unverified.

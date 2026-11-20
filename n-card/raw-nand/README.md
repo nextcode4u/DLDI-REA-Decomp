@@ -73,3 +73,7 @@ The updated write-enabled USB apps print a second error line. For example, `spar
 ### Second card recovery and custom banner
 
 Apache Thunder reported recovering a second N-Card. The DS menu photograph shows its custom icon and `DSGBA NAND CARD` banner. Apache suspected that the first hidden ROM's block table still needed repair. The uDisk section or its block table was also reported unresolved during testing. The report does not establish that the banner-only build wrote the banner in the photograph.
+
+### Banner-only write verified on hardware
+
+Apache Thunder used the banner-only build on a working N-Card and confirmed that the DS displayed the new banner and the card continued to boot fully. The first banner copy changed. The second copy's role remains unverified. [Banner-only build and hardware notes](compiled/write-enabled/banner-only/#hardware-result)
