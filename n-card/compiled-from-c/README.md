@@ -1,6 +1,6 @@
 # NRIO built from C
 
-The included [nrio.dldi](nrio.dldi) builds all 60 driver routines from C. The build assembles the DLDI header and data tables and links the devkitARM startup and division runtime. It was built from source commit `eb3d5ba0eb26a41c19579f24189e0f97ceb46cb1` with devkitARM r20, GCC 4.1.1, and libnds. The artifact passed 832 differential ARM emulation comparisons against the byte-matching build across two load addresses. Hardware testing remains open.
+The included [nrio.dldi](nrio.dldi) builds all 60 driver routines from C. The build assembles the DLDI header and data tables and links the devkitARM startup and division runtime. It was built from source commit `eb3d5ba0eb26a41c19579f24189e0f97ceb46cb1` with devkitARM r20, GCC 4.1.1, and libnds. The artifact passed 832 original differential ARM emulation comparisons and 32 additional write transport comparisons against the byte-matching build across two load addresses. The driver mounted an N-Card through GodMode9i and the benchmark reported about 4.2 MB/s for reads. The write benchmark stalled with both the C build and the stock driver. Hardware writes remain unverified.
 
 | Binary | Size | SHA-256 |
 | --- | ---: | --- |

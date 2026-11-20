@@ -216,15 +216,166 @@ class Driver:
         uc.reg_write(UC_ARM_REG_R0, outcome)
         uc.reg_write(UC_ARM_REG_PC, uc.reg_read(UC_ARM_REG_LR))
 
-    def run(self, label, args, use_r0):
+    def run(self, label, args, use_r0, *, instruction_limit=250000):
         for reg, value in zip(REGS, args):
             self.vm.reg_write(reg, value)
         self.vm.reg_write(UC_ARM_REG_SP, STACK)
         self.vm.reg_write(UC_ARM_REG_LR, STOP)
-        self.vm.emu_start(self.symbols[label], STOP, count=250000)
+        self.vm.emu_start(self.symbols[label], STOP, count=instruction_limit)
         if self.vm.reg_read(UC_ARM_REG_PC) != STOP:
             raise RuntimeError(f'Unterminated {label} seed={self.seed}')
         return self.out(self.vm.reg_read(UC_ARM_REG_R0) if use_r0 else None)
+
+class WriteTransportDriver(Driver):
+    """Model Slot-1 transfer boundaries and NAND program/status replies."""
+
+    def __init__(self, path, seed, load_base):
+        super().__init__(path, seed, load_base)
+        self.remaining_words = 0
+        self.polls_before_ready = 0
+        self.fifo_ready = False
+        self.writing_fifo = False
+        self.nand_opcode = None
+        self.command = 0
+        self.program_armed = False
+        self.programmed_pages = 0
+        self.busy_replies = 0
+        self.delay = 1 + seed % 3
+        self.sector_payloads = []
+        self.spare_offset = 0
+        self.spare_bytes = b'\xff' * 64
+
+    def read_card(self, uc, access, addr, size, val, user):
+        if addr == CTRL:
+            status = 0
+            if self.remaining_words:
+                status = 0x80000000
+                if self.polls_before_ready:
+                    self.polls_before_ready -= 1
+                else:
+                    status |= 0x00800000
+                    self.fifo_ready = True
+            uc.mem_write(CTRL, struct.pack('<I', status))
+        if addr == FIFO:
+            if self.writing_fifo:
+                raise RuntimeError('Read from a transmit FIFO')
+            self.consume_fifo()
+            data = 0
+            if self.command == 0xc2:
+                if self.busy_replies:
+                    self.busy_replies -= 1
+                else:
+                    data = 0x80808080
+            elif self.command == 0xd0:
+                if self.nand_opcode == 0x70:
+                    data = 0xc0
+                elif self.nand_opcode == 0x30:
+                    data, = struct.unpack_from('<I', self.spare_bytes, self.spare_offset)
+                    self.spare_offset += 4
+                else:
+                    data = 0xffffffff
+            uc.mem_write(FIFO, struct.pack('<I', data))
+            self.mmio.append(('fifo-read', data))
+
+    def write_card(self, uc, access, addr, size, val, user):
+        super().write_card(uc, access, addr, size, val, user)
+        if addr == FIFO:
+            if not self.writing_fifo or not self.program_armed:
+                raise RuntimeError('FIFO write outside a NAND program transfer')
+            self.consume_fifo()
+            self.sector_payloads[-1].extend(struct.pack('<I', val))
+        if addr != CTRL:
+            return
+        if self.remaining_words:
+            raise RuntimeError('New Slot-1 transfer before the previous one finished')
+        self.command, subcommand, opcode = uc.mem_read(CARD + 0x1a8, 3)
+        if self.command == 0xd1 and subcommand == 0x61:
+            self.nand_opcode = opcode
+            if opcode == 0x80:
+                self.program_armed = True
+            elif opcode == 0x10:
+                if not self.program_armed:
+                    raise RuntimeError('NAND program confirm without setup')
+                self.programmed_pages += 1
+                self.program_armed = False
+                self.busy_replies = self.delay
+            elif opcode in (0x30, 0xd0):
+                self.busy_replies = self.delay
+                self.spare_offset = 0
+        self.writing_fifo = self.command == 0xd3
+        if self.writing_fifo:
+            self.sector_payloads.append(bytearray(uc.mem_read(CARD + 0x1af, 1)))
+        self.remaining_words = {1: 128, 7: 1}[(val >> 24) & 7]
+        self.polls_before_ready = self.delay
+
+    def consume_fifo(self):
+        if not self.fifo_ready:
+            raise RuntimeError('FIFO accessed before a word was ready')
+        self.remaining_words -= 1
+        self.fifo_ready = False
+        self.polls_before_ready = self.delay
+
+
+def compare_write_transport(images, load_base):
+    requests = ((0, 1), (0, 4), (0, 9), (1, 1), (3, 2), (5, 8), (253, 5), (509, 9))
+    cases = [(sector, count, mapped) for mapped in (False, True) for sector, count in requests]
+    failures = 0
+    for seed, (sector, count, mapped) in enumerate(cases):
+        results = []
+        for binary in images:
+            machine = WriteTransportDriver(binary, seed, load_base)
+            pages = 128 if seed & 1 else 64
+            shift = 7 if pages == 128 else 6
+            machine.set8(0x4dfc, pages)
+            machine.set8(0x5af0, pages - 1)
+            machine.set8(0x5b88, shift)
+            machine.set32(0x4d7c, 2048)
+            machine.set32(0x4df0, 0x1000000 if pages == 128 else 0x800000)
+            for block in range(64):
+                address = machine.get32(0x4d84) + 4 * block
+                machine.vm.mem_write(address, struct.pack('<I', block))
+            if mapped:
+                for block in (0, 1):
+                    machine.set8(0x5afc + block, block + 16)
+                    machine.set8(0x5b44 + block + 16, 0)
+                spare = bytearray(b'\xff' * 64)
+                spare[:4] = b'\x55\xaa\x55\xaa'
+                for marker in (7, 11, 15):
+                    spare[marker] = 0
+                machine.spare_bytes = spare
+            buffer = RAM + 0x1000
+            payload = random.Random(seed).randbytes(count * 512 + 4)
+            machine.vm.mem_write(buffer, payload)
+            try:
+                result = machine.run('nrio_write_sectors', (sector, count, buffer), True,
+                                     instruction_limit=8_000_000)
+                expected_pages = (sector + count - 1) // 4 - sector // 4 + 1
+                if result[0] != 1 or machine.get32(0x5b84) or machine.remaining_words or machine.program_armed:
+                    raise RuntimeError('Write returned with an unfinished request or transfer')
+                if machine.programmed_pages < expected_pages:
+                    raise RuntimeError(f'Only {machine.programmed_pages} pages were programmed')
+                written = iter(machine.sector_payloads)
+                for offset in range(0, count * 512, 512):
+                    wanted = payload[offset:offset + 512]
+                    if not any(sector_bytes[:512] == wanted for sector_bytes in written):
+                        raise RuntimeError(f'Requested sector {offset // 512} did not reach the FIFO')
+                results.append(result)
+            except (UcError, RuntimeError) as error:
+                results.append(str(error))
+        a, b = results
+        if isinstance(a, str) or isinstance(b, str) or a != b:
+            failures += 1
+            print(f'Write transport sector={sector} count={count} mapped={mapped}: '
+                  f'matching={a if isinstance(a, str) else "completed"}, '
+                  f'C={b if isinstance(b, str) else "completed"}')
+            if not isinstance(a, str) and not isinstance(b, str):
+                for index, (left, right) in enumerate(zip(a[-1], b[-1])):
+                    if left != right:
+                        print(f'  First difference in Slot-1 trace at event {index}: {left} vs {right}')
+                        break
+    print(f'Write transport: {len(cases) - failures}/{len(cases)} scenarios agree', flush=True)
+    return failures
+
 
 def case(driver, label, n):
     driver.test_entry = label
@@ -331,12 +482,15 @@ def main():
     project = Path(__file__).resolve().parent.parent
     parser.add_argument("--matching-dir", type=Path, default=project / "build/matching")
     parser.add_argument("--c-dir", type=Path, default=project / "build")
+    parser.add_argument("--write-transport-only", action="store_true")
     args = parser.parse_args()
     images = (args.matching_dir, args.c_dir)
     total_failures = 0
     for load_base in (BASE, RELOCATED_BASE):
         print(f"Load address {load_base:#010x}", flush=True)
-        total_failures += compare(images, load_base)
+        if not args.write_transport_only:
+            total_failures += compare(images, load_base)
+        total_failures += compare_write_transport(images, load_base)
     return int(total_failures != 0)
 
 
@@ -353,7 +507,7 @@ def compare(images, load_base):
                     results.append(machine.run(label, args, use_result))
                 except (UcError, RuntimeError) as exc:
                     results.append(str(exc))
-            if results[0] == results[1]:
+            if results[0] == results[1] and not isinstance(results[0], str):
                 continue
             failures += 1
             if failures > 3:
