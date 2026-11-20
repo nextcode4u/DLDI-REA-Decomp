@@ -55,7 +55,9 @@ Apache Thunder described two layouts used by different generations of cards.
 | Early single-game DSFlash2 | Points to the flashed game, described at `0x40000` | In the described single-game layout, this offset is the start of the game |
 | Newer uDisk N-Card | Points to a safe-mode ROM | Points to the normal uDisk ROM, usually at `0x80000` |
 
-In the newer layout, the safe-mode ROM can update uDisk from a PC through the USB adapter. Apache reported that entering the update screen also requires a key combination. With the adapter absent, the safe-mode ROM proceeds to the second block table and loads normal uDisk. The exact key combination and card-specific offsets have not been verified here.
+In the newer layout, the safe-mode ROM can update uDisk from a PC through the Slot-2 USB writer before handing off to normal uDisk. With the writer absent, Apache Thunder reports that the safe-mode ROM follows the second block table to load uDisk. The offsets in the table describe the reported layouts and may vary by card.
+
+To enter USB update mode on a DS or DS Lite, insert the USB writer into Slot-2 and connect it to the PC. Hold **L + R + A + B + D-pad Up** while launching the N-Card. Keep holding the buttons until **USB SAFE BLOCK** appears on the bottom screen. The PC updater can then run even if normal uDisk fails to boot. [Apache Thunder’s XuluMenu flashing instructions](https://github.com/ApacheThunder/XuluMenu#flashing-instructions)
 
 ## Hardware results
 
