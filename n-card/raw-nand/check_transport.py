@@ -190,13 +190,14 @@ def check_cross_block(image, nand_id):
     assert device.vm.mem_read(RAM, 1024) == payload
 
 
-def check_failure(image, nand_id, failure):
+def check_failure(image, nand_id, failure, pages_written=1):
     device = recovery_device(image, nand_id)
     device.failure = failure
     device.vm.mem_write(RAM, b'\x23' * 512)
     assert not device.run(3, 0, 1, RAM)
     assert device.erased_blocks == [0]
-    assert device.programmed_rows == ([] if failure == 'erase' else [0])
+    expected_rows = {'erase': [], 'program': [0], 'readback': list(range(pages_written))}
+    assert device.programmed_rows == expected_rows[failure]
     assert not device.run(4)  # clearStatus reports the latched error.
     assert not device.run(3, device.pages_per_block * 4, 1, RAM)
     assert device.erased_blocks == [0]
@@ -222,6 +223,38 @@ def check_spare(image, nand_id, pages):
     assert not device.erased_blocks and not device.programmed_rows
 
 
+def check_spare_write(image, nand_id):
+    device = Flash(image, nand_id)
+    assert device.run(0) == 1
+    assert device.run(2, 0xffffffff, 0, RAM)
+    assert struct.unpack('<IIII', device.vm.mem_read(RAM, 16)) == (
+        1, 65_536, device.pages_per_block * PAGE_BYTES, nand_id,
+    )
+    page = device.pages_per_block
+    first_row = page - 8
+    payload = b''.join(b'\x55' + bytes([i]) * 63 for i in range(16))
+    for i in range(16):
+        device.flash[first_row + i] = bytes([i + 1]) * 2048 + b'\xff' * 64
+    neighbor = b'\xfe' * 2048 + b'\xff' * 64
+    device.flash[first_row - 1] = neighbor
+    device.flash[first_row + 16] = neighbor
+    device.vm.mem_write(RAM, payload)
+    assert not device.run(3, first_row // 8, 2, RAM)
+    assert device.run(2, 0xfffffffe, page * PAGE_BYTES, RAM + 0x10000)
+    assert not device.run(3, 65_535, 2, RAM)
+    assert not device.erased_blocks
+    assert device.run(3, first_row // 8, 2, RAM)
+    assert device.erased_blocks == [0, page]
+    for i in range(16):
+        assert device.record(first_row + i) == bytes([i + 1]) * 2048 + payload[i * 64:(i + 1) * 64]
+    assert device.record(first_row - 1) == neighbor
+    assert device.record(first_row + 16) == neighbor
+    assert device.run(2, first_row // 8, 2, RAM)
+    assert device.vm.mem_read(RAM, 1024) == payload
+    assert device.run(3, first_row // 8, 2, RAM)
+    assert device.erased_blocks == [0, page]
+
+
 if __name__ == '__main__':
     path = Path(__file__).resolve().parent / 'compiled'
     for mode in ('readonly', 'recovery'):
@@ -238,3 +271,10 @@ if __name__ == '__main__':
     check_spare(spare, 0x1500d3ec, 524_288)
     check_spare(spare, 0x3500d5ec, 1_048_576)
     print('spare: page ordering, capacity, high row bits and write rejection passed')
+
+    spare_write = (path / 'nrio-raw-spare-write.nds').read_bytes()
+    for chip in (0x1500d3ec, 0x3500d3ec):
+        check_spare_write(spare_write, chip)
+        for failure in ('erase', 'program', 'readback'):
+            check_failure(spare_write, chip, failure, pages_written=8)
+    print('spare-write: raw spare replacement, main data preservation and failure handling passed')

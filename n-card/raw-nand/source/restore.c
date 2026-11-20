@@ -1,5 +1,10 @@
 #include "raw_nand.h"
+#ifdef RAW_NAND_SPARE
+enum { UPDATE_SIZE = SPARE_SIZE, UPDATES_PER_PAGE = 1, UPDATE_OFFSET = PAGE_SIZE };
+#else
 #include "../../source/card/nand_ecc.h"
+
+enum { UPDATE_SIZE = SECTOR_SIZE, UPDATES_PER_PAGE = SECTORS_PER_PAGE, UPDATE_OFFSET = 0 };
 
 static u32 load_word(const u8 *in)
 {
@@ -8,7 +13,7 @@ static u32 load_word(const u8 *in)
 
 static void regenerate_ecc(u8 *record, u32 column)
 {
-    const u8 *data = record + column * SECTOR_SIZE;
+    const u8 *data = record + UPDATE_OFFSET + column * UPDATE_SIZE;
     u32 all = 0, bit0 = 0, bit1 = 0, bit2 = 0, row = 0;
     bool odd = false;
     for (u32 group = 0; group < 16; ++group) {
@@ -35,6 +40,10 @@ static void regenerate_ecc(u8 *record, u32 column)
         spare[12 + i] = spare[8 + i];
     }
 }
+
+#endif
+
+enum { UPDATES_PER_SECTOR = SECTOR_SIZE / UPDATE_SIZE };
 
 static bool read_page(u32 page, u8 *record)
 {
@@ -79,13 +88,15 @@ static bool rewrite_block(u32 page, u32 pages, u32 offset, u32 count,
     bool changed = false;
     for (u32 i = 0; i < count; ++i) {
         u32 index = offset + i;
-        u32 column = index % SECTORS_PER_PAGE;
-        u8 *record = records + (index / SECTORS_PER_PAGE) * PAGE_RECORD_SIZE;
-        u8 *data = record + column * SECTOR_SIZE;
-        const u8 *source = input + i * SECTOR_SIZE;
-        if (!equal(data, source, SECTOR_SIZE)) {
-            for (u32 j = 0; j < SECTOR_SIZE; ++j) data[j] = source[j];
+        u32 column = index % UPDATES_PER_PAGE;
+        u8 *record = records + (index / UPDATES_PER_PAGE) * PAGE_RECORD_SIZE;
+        u8 *data = record + UPDATE_OFFSET + column * UPDATE_SIZE;
+        const u8 *source = input + i * UPDATE_SIZE;
+        if (!equal(data, source, UPDATE_SIZE)) {
+            for (u32 j = 0; j < UPDATE_SIZE; ++j) data[j] = source[j];
+#ifndef RAW_NAND_SPARE
             regenerate_ecc(record, column);
+#endif
             changed = true;
         }
     }
@@ -107,13 +118,14 @@ static bool rewrite_block(u32 page, u32 pages, u32 offset, u32 count,
 
 bool restore_sectors(u32 sector, u32 count, const u8 *buffer, u32 pages_per_block, u8 *workspace)
 {
-    u32 block_sectors = pages_per_block * SECTORS_PER_PAGE;
+    u32 block_sectors = pages_per_block * UPDATES_PER_PAGE / UPDATES_PER_SECTOR;
     while (count) {
         u32 offset = sector & (block_sectors - 1);
         u32 batch = block_sectors - offset;
         if (batch > count) batch = count;
-        if (!rewrite_block((sector - offset) / SECTORS_PER_PAGE, pages_per_block,
-                           offset, batch, buffer, workspace)) return false;
+        if (!rewrite_block((sector - offset) * UPDATES_PER_SECTOR / UPDATES_PER_PAGE,
+                           pages_per_block, offset * UPDATES_PER_SECTOR,
+                           batch * UPDATES_PER_SECTOR, buffer, workspace)) return false;
         sector += batch;
         count -= batch;
         buffer += batch * SECTOR_SIZE;

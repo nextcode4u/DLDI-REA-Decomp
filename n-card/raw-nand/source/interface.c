@@ -2,8 +2,6 @@
 
 static u32 sector_count;
 static u32 pages_per_block;
-
-enum { SPARES_PER_SECTOR = SECTOR_SIZE / SPARE_SIZE };
 static u32 nand_id;
 
 #ifdef RAW_NAND_WRITE

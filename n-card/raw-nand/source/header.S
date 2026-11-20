@@ -5,7 +5,11 @@ nrio_raw_header:
     .asciz " Chishm"
     .byte 1, 13, 0x0c, 0        @ Version, image size, FIX_GOT | FIX_BSS, allocation
 .ifdef RAW_NAND_WRITE
+.ifdef RAW_NAND_SPARE
+    .asciz "N-Card Spare RW"
+.else
     .asciz "N-Card Raw R/W"
+.endif
 .else
 .ifdef RAW_NAND_SPARE
     .asciz "N-Card Spare"

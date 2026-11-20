@@ -6,7 +6,8 @@ Use [nrio-raw-readonly.nds](compiled/nrio-raw-readonly.nds) for the first test. 
 | --- | --- | --- |
 | Read-only dump | [nrio-raw-readonly.dldi](compiled/nrio-raw-readonly.dldi) | [nrio-raw-readonly.nds](compiled/nrio-raw-readonly.nds) |
 | Read-only spare dump | [nrio-raw-spare.dldi](compiled/nrio-raw-spare.dldi) | [nrio-raw-spare.nds](compiled/nrio-raw-spare.nds) |
-| Recovery write | [nrio-raw-recovery.dldi](compiled/nrio-raw-recovery.dldi) | [nrio-raw-recovery.nds](compiled/nrio-raw-recovery.nds) |
+| Spare recovery write | [nrio-raw-spare-write.dldi](compiled/nrio-raw-spare-write.dldi) | [nrio-raw-spare-write.nds](compiled/nrio-raw-spare-write.nds) |
+| Main-area recovery write | [nrio-raw-recovery.dldi](compiled/nrio-raw-recovery.dldi) | [nrio-raw-recovery.nds](compiled/nrio-raw-recovery.nds) |
 
 ## Physical addressing
 
@@ -17,6 +18,12 @@ The USB image contains all addressable main data, including boot and other norma
 ## Spare-area dump
 
 The spare-area USB build packs eight consecutive 64-byte spare records into each 512-byte USB sector. The first 64 bytes in the dump belong to NAND page 0. For page `n`, the record starts at offset `n * 64` in the spare dump and its corresponding main data starts at `n * 2048` in the main dump. A 2 GiB N-Card should expose **131,072 USB sectors (64 MiB)** in the spare-area build. The exposed records include ECC and other spare bytes as returned by the N-Card bridge. Their contents can be compared between a working card and the damaged card. The location of the missing boot data remains unconfirmed.
+
+## Spare recovery writes
+
+The writable spare build uses the same eight-record layout as the read-only spare dumper. Every 512-byte USB write supplies eight consecutive 64-byte spare records. The driver reads the whole affected erase block, replaces only the requested spare records, rewrites the block, and compares the readback of all main and spare bytes with the staged data. It preserves the supplied ECC and marker bytes verbatim. Use spare data intended for the exact main-page contents on the target card. Copying spare bytes between cards can also copy block markers and other metadata.
+
+Save main and spare dumps before writing. The same erase-block, bad-marker, and power-loss limitations described below apply. Spare writes remain unverified on physical hardware.
 
 ## Recovery writes
 
@@ -33,7 +40,7 @@ Build the standalone drivers from this folder with `make DEVKITPRO=/path/to/r20-
 
 ## Verification
 
-`python3 check_transport.py` runs the relocated DLDI extracted from each compiled NDS in Unicorn. It checks sector zero, the final sector, out-of-range rejection, both erase geometries, write gating, preservation of adjacent data and spare bytes across erase-block boundaries, and bad-marker refusal against a simulated NAND bridge. It also injects erase failures, program failures, and readback mismatches to check that the driver rejects later writes while allowing reads. The spare-area test also checks eight-record packing, capacity, the final physical page, and write rejection. Spare-area reads remain unverified on physical hardware.
+`python3 check_transport.py` runs the relocated DLDI extracted from each compiled NDS in Unicorn. It checks sector zero, the final sector, out-of-range rejection, both erase geometries, write gating, preservation of adjacent data and spare bytes across erase-block boundaries, and bad-marker refusal against a simulated NAND bridge. It also injects erase failures, program failures, and readback mismatches to check that the driver rejects later writes while allowing reads. The spare-area tests also check eight-record packing, capacity, the final physical page, read-only write rejection, exact spare replacement across erase blocks, main-data preservation, and failure handling. Spare-area reads remain unverified on physical hardware.
 
 ## Hardware results
 
