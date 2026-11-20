@@ -42,14 +42,15 @@ ASM_SOURCES := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.S))
 C_RECONSTRUCTION := source/card/nand_transfer.c source/nand/page_ops.c \
                     source/ftl/mapping.c source/ftl/write.c
 
+C_ONLY ?= 1
 ifeq ($(C_ONLY),1)
-BUILD := build/c-only
+BUILD := build
 ASM_SOURCES := source/dldi/header.S source/system/data.S
 $(BUILD)/ftl/block_tables.o: CPPFLAGS += -DNRIO_C_ONLY
 # Keep the page dispatcher's separate address loads for each switch case.
 $(BUILD)/nand/page_ops.o: CFLAGS += -fno-gcse
 else
-BUILD := build
+BUILD := build/matching
 C_SOURCES := $(filter-out $(C_RECONSTRUCTION),$(C_SOURCES))
 endif
 C_OBJECTS := $(C_SOURCES:source/%.c=$(BUILD)/%.o)

@@ -329,8 +329,8 @@ LABELS = {
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     project = Path(__file__).resolve().parent.parent
-    parser.add_argument("--matching-dir", type=Path, default=project / "build")
-    parser.add_argument("--c-dir", type=Path, default=project / "build/c-only")
+    parser.add_argument("--matching-dir", type=Path, default=project / "build/matching")
+    parser.add_argument("--c-dir", type=Path, default=project / "build")
     args = parser.parse_args()
     images = (args.matching_dir, args.c_dir)
     total_failures = 0

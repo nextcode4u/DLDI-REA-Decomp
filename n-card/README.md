@@ -1,6 +1,6 @@
 # NRIO DLDI reconstruction
 
-The standalone build matches all 19,724 bytes of XuluMenu's `nrio.dldi`. It covers the DLDI interface, Slot-1 command transport, NAND access, and flash translation layer. The matching build compiles 52 routines from C and assembles the remaining eight. The all-C build compiles all 60 driver routines from C, including the bulk transfers with ECC generation and the translation layer. Its binary still differs from the reference. The devkitARM startup and unsigned division code are linked from the historical toolchain. [Pinned XuluMenu reference](https://github.com/ApacheThunder/XuluMenu/blob/7ceabcbc9331f84a8c4fcde38b6f60193405ee8a/nrio.dldi)
+The default build compiles all 60 N-Card driver routines from C, covering the DLDI interface, Slot-1 command transport, NAND access with ECC, and flash translation layer. The optional matching build reproduces all 19,724 bytes of XuluMenu's `nrio.dldi` using 52 C routines and eight assembly routines. Both builds use an assembly DLDI header and data tables, together with startup and division code from the historical devkitARM toolchain. [Pinned XuluMenu reference](https://github.com/ApacheThunder/XuluMenu/blob/7ceabcbc9331f84a8c4fcde38b6f60193405ee8a/nrio.dldi)
 
 ## Build and compare
 
@@ -8,26 +8,27 @@ Use devkitARM r20 with its GCC 4.1.1, binutils, and an era-compatible libnds ins
 
 ```sh
 make DEVKITPRO=/path/to/r20-sdk
-make DEVKITPRO=/path/to/r20-sdk verify
 ```
 
-In this workspace the existing SDK root is `/mnt/d/WORKSPACES/jenesisds-r20-sdk.A6WpYa`. The build writes `build/nrio.dldi`, `build/nrio.elf`, and `build/nrio.map`. The reference binary is read only by `make verify`, which compares every byte with `cmp`.
+In this workspace the SDK root is `/mnt/d/WORKSPACES/jenesisds-r20-sdk.A6WpYa`. The default build writes `build/nrio.dldi`, `build/nrio.elf`, and `build/nrio.map`.
 
-Expected SHA-256
+## Byte-matching build
+
+```sh
+make DEVKITPRO=/path/to/r20-sdk C_ONLY=0 verify
+```
+
+This builds `build/matching/nrio.dldi` and compares it with the reference using `cmp`. With a successful comparison, the expected SHA-256 is
 
 ```text
 716937fa83dda22df3b27bf2c08ce9ea9a0209c6d64498a83b527c0dddae8978
 ```
 
-## All-C build
+Byte matching from C remains for the two ECC transfers, page operation dispatch, NAND page copying, geometry initialization, zone loading, and the two mapped sector operations.
 
-```sh
-make DEVKITPRO=/path/to/r20-sdk C_ONLY=1
-```
+## Compare driver behavior
 
-The all-C output is `build/c-only/nrio.dldi`. Both builds use the DLDI header, data tables, and historical compiler runtime. Byte matching remains for the two ECC transfers, page operation dispatch, NAND page copying, geometry initialization, zone loading, and the two mapped sector operations.
-
-To compare the C implementations with the matching binary, build both configurations and run the ARM926 differential checks with Python and Unicorn 2.1.4 installed.
+After building both configurations, run the ARM926 differential checks with Python and Unicorn 2.1.4 installed.
 
 ```sh
 python3 scripts/check_c_behavior.py
@@ -56,14 +57,14 @@ The checks compare function results, driver state, buffer writes, and Slot-1 tra
 
 REA 6.9.0 with Ghidra 12.1.4 was used to recover control flow and cross-check the reconstructed C against the ARM instructions. The included Ghidra script marks Slot-1 I/O regions volatile so the decompiler preserves polling loops and FIFO reads.
 
-Run from the source directory with `rea` on `PATH` and `GHIDRA_INSTALL_DIR` set to the Ghidra installation.
+Build the matching configuration for the original routine addresses. Run from the source directory with `rea` on `PATH` and `GHIDRA_INSTALL_DIR` set to the Ghidra installation.
 
 ```sh
 mkdir -p build/ghidra
 "$GHIDRA_INSTALL_DIR/support/analyzeHeadless" "$PWD/build/ghidra" nrio \
-  -import "$PWD/build/nrio.elf" -scriptPath "$PWD/scripts/ghidra" -preScript MarkCardIo.java
+  -import "$PWD/build/matching/nrio.elf" -scriptPath "$PWD/scripts/ghidra" -preScript MarkCardIo.java
 REA_GHIDRA_PROJECT_PATH="$PWD/build/ghidra/nrio.gpr" \
-  rea decompile-all "$PWD/build/nrio.elf" --provider ghidra \
+  rea decompile-all "$PWD/build/matching/nrio.elf" --provider ghidra \
   --address-start 0xbf800080 --address-end 0xbf804bab --output "$PWD/build/rea"
 ```
 
