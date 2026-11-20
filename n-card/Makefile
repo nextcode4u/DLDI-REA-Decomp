@@ -47,6 +47,9 @@ END_FILES := $(call tool_path,$(GCC_LIBDIR)/crtend.o) $(call tool_path,$(GCC_LIB
 .PHONY: all clean verify
 all: $(BUILD)/nrio.dldi
 
+# These routines call only ARM code. GCC can then emit a direct tail branch.
+$(BUILD)/ftl/sector_read.o: CFLAGS += -mno-thumb-interwork
+
 $(BUILD)/%.o: source/%.c Makefile scripts/fix-got.sed
 	@mkdir -p "$(@D)"
 	"$(CC)" $(GCC_SEARCH) $(CPPFLAGS) $(CFLAGS) -MMD -MP -MF "$(@:.o=.d)" \

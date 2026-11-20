@@ -1,6 +1,6 @@
 # NRIO DLDI reconstruction
 
-The standalone build matches all 19,724 bytes of XuluMenu's `nrio.dldi`. It covers the DLDI interface, Slot-1 command transport, NAND access, and flash translation layer. The working source currently contains 40 recovered C routines and 20 ARM assembly routines. The bulk transfers with ECC generation and most of the translation layer still use assembly. The devkitARM startup and unsigned division code are linked from the historical toolchain. [Pinned XuluMenu reference](https://github.com/ApacheThunder/XuluMenu/blob/7ceabcbc9331f84a8c4fcde38b6f60193405ee8a/nrio.dldi)
+The standalone build matches all 19,724 bytes of XuluMenu's `nrio.dldi`. It covers the DLDI interface, Slot-1 command transport, NAND access, and flash translation layer. The working source currently contains 50 recovered C routines and 10 ARM assembly routines. The bulk transfers with ECC generation and most of the translation layer still use assembly. The devkitARM startup and unsigned division code are linked from the historical toolchain. [Pinned XuluMenu reference](https://github.com/ApacheThunder/XuluMenu/blob/7ceabcbc9331f84a8c4fcde38b6f60193405ee8a/nrio.dldi)
 
 ## Build and compare
 

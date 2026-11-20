@@ -4,6 +4,8 @@ extern u32 nrio_retry_block_erase(u32 block);
 extern u8 nrio_copy_nand_pages(u8 source, u8 destination, u8 first_page, u8 end_page);
 extern unsigned nrio_write_page_marker(u32 page);
 extern u8 nrio_allocate_free_block(void);
+extern u8 nrio_find_free_block(void);
+extern void nrio_load_zone(void);
 
 NRIO_ROUTINE(1888) void nrio_commit_pending_block(void)
 {
@@ -106,4 +108,36 @@ NRIO_ROUTINE(3d28) u32 nrio_flush_block(void)
         } while (remaining != 0xff);
     }
     return 2;
+}
+
+NRIO_ROUTINE(3e5c) u32 nrio_sector_nand_address(u32 offset)
+{
+    u32 sector = offset >> 9;
+    nrio_current_sector = sector;
+    if (sector + 1 > nrio_sector_capacity) {
+        return 0;
+    }
+
+    sector += nrio_sector_base;
+    u32 page = sector >> 2;
+    u8 page_in_block_mask = nrio_page_in_block_mask;
+    u32 block = page / nrio_pages_per_block;
+    u16 zone = block / 62;
+    u8 block_in_zone = block % 62;
+    if (zone != nrio_current_zone) {
+        nrio_current_zone = zone;
+        nrio_load_zone();
+    }
+
+    if (nrio_pending_logical_block == block_in_zone && nrio_flush_block() != 0) {
+        return 0;
+    }
+    u8 physical = nrio_logical_block_map[block_in_zone];
+    if (physical == 0xff) {
+        physical = nrio_find_free_block();
+    }
+    u8 page_in_block = (sector >> 2) & page_in_block_mask;
+    u32 physical_page = nrio_physical_block_table[physical] * nrio_pages_per_block +
+                        page_in_block;
+    return nrio_nand_data_base + ((physical_page * 4 + (sector & 3)) << 9);
 }

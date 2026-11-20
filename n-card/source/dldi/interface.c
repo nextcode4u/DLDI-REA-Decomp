@@ -1,7 +1,7 @@
 #include "../nrio.h"
 
 extern void nrio_ftl_write(u32 offset, const void *buffer, u32 size);
-extern void nrio_ftl_read(u32 offset, void *buffer, u32 size);
+extern void nrio_ftl_read(u32 offset, u32 buffer_address, u32 size);
 extern void nrio_ftl_init(u32 mode);
 
 enum { SECTOR_SHIFT = 9 };
@@ -29,7 +29,7 @@ NRIO_ROUTINE(134c) bool nrio_write_sectors(u32 sector, u32 count, const void *bu
 
 NRIO_ROUTINE(1378) bool nrio_read_sectors(u32 sector, u32 count, void *buffer)
 {
-    nrio_ftl_read(sector << SECTOR_SHIFT, buffer, count << SECTOR_SHIFT);
+    nrio_ftl_read(sector << SECTOR_SHIFT, (u32)buffer, count << SECTOR_SHIFT);
     return true;
 }
 

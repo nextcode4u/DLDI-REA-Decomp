@@ -33,10 +33,10 @@ nrio_got:
     got_entry nrio_state_4d2c
     got_entry nrio_state_4d30
     got_entry nrio_state_4d34
-    got_entry nrio_state_4d38
+    got_entry nrio_write_buffer
     got_entry nrio_state_4d3c
     got_entry nrio_sector_capacity
-    got_entry nrio_state_4d80
+    got_entry nrio_new_sector_request
     got_entry nrio_physical_block_table
     got_entry nrio_state_4d88
     got_entry nrio_state_4d8c
@@ -67,10 +67,10 @@ nrio_got:
     got_entry nrio_state_5158
     got_entry nrio_state_5258
     got_entry nrio_state_525c
-    got_entry nrio_state_5260
-    got_entry nrio_state_5264
+    got_entry nrio_sector_base
+    got_entry nrio_read_buffer
     got_entry nrio_state_5268
-    got_entry nrio_state_52a8
+    got_entry nrio_page_buffer
     got_entry nrio_state_5aa8
     got_entry nrio_state_5ae8
     got_entry nrio_logical_block_map
@@ -80,13 +80,13 @@ nrio_got:
     got_entry nrio_state_5af8
     got_entry nrio_state_5afc
     got_entry nrio_state_5b3c
-    got_entry nrio_state_5b40
+    got_entry nrio_sector_in_page
     got_entry nrio_state_5b44
-    got_entry nrio_state_5b84
+    got_entry nrio_sector_count
     got_entry nrio_state_5b88
     got_entry nrio_pending_physical_block
     got_entry nrio_state_5b90
     got_entry nrio_pending_logical_block
     got_entry nrio_state_5b98
     got_entry nrio_state_5b9c
-    got_entry nrio_state_5ba0
+    got_entry nrio_block_table_address

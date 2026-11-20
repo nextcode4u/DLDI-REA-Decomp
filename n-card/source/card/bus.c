@@ -203,3 +203,70 @@ NRIO_ROUTINE(0a08) void nrio_erase_nand_block(void)
         nrio_wait_nand();
     }
 }
+
+static inline u32 load_le32_and_advance(const u8 **address)
+{
+    const u8 *byte = *address;
+    u32 word = *byte++;
+    word |= (u32)*byte++ << 8;
+    word |= (u32)*byte++ << 16;
+    word |= (u32)*byte++ << 24;
+    *address = byte;
+    return word;
+}
+
+NRIO_ROUTINE(0908) void nrio_write_nand_sector_raw(const u8 *input, u32 sector)
+{
+    if ((nrio_nand_address & 0xfffc0000u) == 0) {
+        return;
+    }
+
+    if (sector == 0) {
+        nrio_send_nand_command(0x80);
+        nrio_command_55(0);
+    }
+
+    CARD_COMMAND[0] = 0xd3;
+    CARD_COMMAND[1] = 0;
+    CARD_COMMAND[7] = *input++;
+    CARD_CR2 = 0xe1000008;
+
+    u32 word = load_le32_and_advance(&input);
+    do {
+        if (CARD_CR2 & CARD_DATA_READY) {
+            CARD_DATA_RD = word;
+            word = load_le32_and_advance(&input);
+        }
+    } while ((s32)CARD_CR2 < 0);
+}
+
+NRIO_ROUTINE(0758) void nrio_write_nand_spare(const u32 *input)
+{
+    if ((nrio_nand_address & 0xfffc0000u) == 0) {
+        return;
+    }
+
+    nrio_send_nand_command(0x80);
+    nrio_command_55(1);
+
+    const void *end = input + 16;
+    /* Keep the post-incrementing load in the register used by the original. */
+    register const u32 *cursor __asm__("lr") = input;
+    __asm__ ("" : "+r"(cursor));
+
+    CARD_COMMAND[0] = 0xd1;
+    CARD_COMMAND[1] = 0x44;
+    CARD_COMMAND[6] = 0;
+    do {
+        u32 word = *cursor++;
+        CARD_COMMAND[2] = (u8)word;
+        CARD_COMMAND[3] = (u8)(word >> 8);
+        CARD_COMMAND[4] = (u8)(word >> 16);
+        CARD_COMMAND[5] = (u8)(word >> 24);
+        CARD_CR2 = 0xa7000000;
+        (void)read_reply();
+    } while (__builtin_expect((u32)cursor != (u32)end, 1));
+
+    nrio_send_nand_command(0x10);
+    nrio_wait_nand();
+}

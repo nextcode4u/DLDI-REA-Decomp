@@ -1,67 +1,7 @@
-@ Sector reads and initialization of the NAND geometry and block maps.
+@ Initialization of the NAND geometry and block maps.
 .syntax unified
 .arm
-.section .nrio.30ec, "ax", %progbits
-
-.global nrio_ftl_read
-.type nrio_ftl_read, %function
-nrio_ftl_read:
-    push    {r4, r5, r6, r7, r8, sl, lr}
-.Lgotpc_30f0:
-    ldr     sl, .L3190
-    ldr     r3, .L3194
-    add     sl, pc, sl
-    ldr     ip, [sl, r3]
-    ldr     r3, .L3198
-    ldr     r5, [sl, r3]
-    ldr     r3, .L319c
-    lsr     r0, r0, #9
-    ldr     lr, [ip]
-    lsr     r6, r2, #9
-    add     ip, r0, #1
-    ldr     r2, [sl, r3]
-    ldr     r3, .L31a0
-    cmp     ip, lr
-    mov     ip, #1
-    strb    ip, [r2]
-    ldr     r2, [sl, r3]
-    sub     sp, sp, #4
-    str     r6, [r2]
-    mov     r4, r1
-    str     r0, [r5]
-    bhi     .L3184
-    cmp     r6, #0
-    beq     .L3184
-    ldr     r3, .L31a4
-    ldr     r8, [sl, r3]
-    mov     r7, r5
-    mov     r5, #0
-.L3160:
-    str     r4, [r8]
-    bl      nrio_read_sector_with_mapping
-    ldr     r3, [r7]
-    add     r5, r5, #1
-    add     r3, r3, #1
-    cmp     r6, r5
-    str     r3, [r7]
-    add     r4, r4, #0x200
-    bne     .L3160
-.L3184:
-    add     sp, sp, #4
-    pop     {r4, r5, r6, r7, r8, sl, lr}
-    bx      lr
-.L3190:
-    .word   nrio_got - (.Lgotpc_30f0 + 16)
-.L3194:
-    .word   0x00000020
-.L3198:
-    .word   0x0000007c
-.L319c:
-    .word   0x00000024
-.L31a0:
-    .word   0x000000dc
-.L31a4:
-    .word   0x000000a4
+.section .nrio.31a8, "ax", %progbits
 
 .global nrio_init_nand_geometry
 .type nrio_init_nand_geometry, %function

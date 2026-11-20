@@ -18,4 +18,19 @@ extern u8 nrio_pending_physical_block;
 extern u8 nrio_old_physical_block;
 extern u8 nrio_pending_page_count;
 
+extern u32 nrio_block_table_address;
+extern u8 nrio_sector_in_page;
+extern u16 nrio_page_buffer[1024];
+
+extern u32 nrio_sector_base;
+extern u32 nrio_current_sector;
+extern u32 nrio_sector_capacity;
+
+extern const u8 *nrio_write_buffer;
+extern u8 nrio_new_sector_request;
+extern u32 nrio_sector_count;
+extern u32 nrio_cached_logical_page;
+
+extern u8 *nrio_read_buffer;
+
 #endif

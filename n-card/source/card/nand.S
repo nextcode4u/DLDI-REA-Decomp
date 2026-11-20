@@ -3,73 +3,8 @@
 .syntax unified
 .arm
 
-.section .nrio.0758, "ax", %progbits
+.section .nrio.0838, "ax", %progbits
 
-.global nrio_write_nand_spare
-.type nrio_write_nand_spare, %function
-nrio_write_nand_spare:
-    push    {r4, r5, r6, r7, sl, lr}
-.Lgotpc_075c:
-    ldr     sl, .L0830
-    ldr     r3, .L0834
-    add     sl, pc, sl
-    ldr     r1, [sl, r3]
-    ldr     r2, [r1]
-    lsr     r2, r2, #18
-    lsl     r2, r2, #18
-    cmp     r2, #0
-    mov     r4, r0
-    bne     .L078c
-    pop     {r4, r5, r6, r7, sl, lr}
-    bx      lr
-.L078c:
-    mov     r0, #0x80
-    bl      nrio_send_nand_command
-    mov     r0, #1
-    bl      nrio_command_55
-    mov     r0, #0x4000000
-    add     r0, r0, #0x100
-    mvn     r3, #0x2e
-    mov     r1, #0x4000000
-    strb    r3, [r0, #168]
-    mov     r2, #0x44
-    add     r3, r3, #0x2f
-    strb    r2, [r1, #425]
-    strb    r3, [r1, #430]
-    mov     lr, r4
-    mov     ip, r1
-    mov     r7, r0
-    add     r4, r4, #0x40
-    mov     r6, #0xa7000000
-    mov     r5, #0x4100000
-.L07d8:
-    ldr     r3, [lr], #4
-    lsr     r2, r3, #8
-    lsr     r1, r3, #16
-    lsr     r0, r3, #24
-    and     r2, r2, #0xff
-    and     r1, r1, #0xff
-    and     r3, r3, #0xff
-    strb    r3, [ip, #426]
-    strb    r2, [ip, #427]
-    strb    r1, [r7, #172]
-    strb    r0, [ip, #429]
-    str     r6, [ip, #420]
-.L0808:
-    ldr     r3, [ip, #420]
-    tst     r3, #0x800000
-    beq     .L0808
-    cmp     lr, r4
-    ldr     r3, [r5, #16]
-    bne     .L07d8
-    mov     r0, #16
-    bl      nrio_send_nand_command
-    pop     {r4, r5, r6, r7, sl, lr}
-    b       nrio_wait_nand
-.L0830:
-    .word   nrio_got - (.Lgotpc_075c + 16)
-.L0834:
-    .word   0x000000c4
 
 .global nrio_finish_nand_write
 .type nrio_finish_nand_write, %function
@@ -131,82 +66,6 @@ nrio_finish_nand_write:
 .L0900:
     .word   nrio_got - (.Lgotpc_083c + 16)
 .L0904:
-    .word   0x000000c4
-
-.global nrio_write_nand_sector_raw
-.type nrio_write_nand_sector_raw, %function
-nrio_write_nand_sector_raw:
-    push    {r4, r5, sl, lr}
-.Lgotpc_090c:
-    ldr     sl, .L0a00
-    ldr     r3, .L0a04
-    add     sl, pc, sl
-    ldr     ip, [sl, r3]
-    ldr     r2, [ip]
-    lsr     r2, r2, #18
-    lsl     r2, r2, #18
-    cmp     r2, #0
-    mov     r5, r0
-    mov     r4, r1
-    beq     .L09e4
-    cmp     r1, #0
-    beq     .L09ec
-.L0940:
-    mov     r3, #0x4000000
-    mov     lr, #0x4000000
-    add     r3, r3, #0x100
-    mvn     r2, #0x2c
-    mov     r1, #0
-    strb    r2, [r3, #168]
-    strb    r1, [lr, #425]
-    mov     r2, r5
-    ldrb    r1, [r2], #1
-    mov     r3, #0xe1000000
-    add     r3, r3, #8
-    strb    r1, [lr, #431]
-    str     r3, [lr, #420]
-    ldrb    r0, [r2, #1]
-    ldrb    r1, [r5, #1]
-    add     r2, r2, #1
-    ldrb    ip, [r2, #1]
-    add     r2, r2, #1
-    ldrb    r3, [r2, #1]
-    orr     r1, r1, r0, lsl #8
-    orr     r1, r1, ip, lsl #16
-    orr     r1, r1, r3, lsl #24
-    add     r2, r2, #2
-    mov     r4, #0x4100000
-.L09a0:
-    ldr     r3, [lr, #420]
-    tst     r3, #0x800000
-    mov     r0, r2
-    beq     .L09d8
-    str     r1, [r4, #16]
-    ldrb    r3, [r0], #1
-    ldrb    r1, [r2, #1]
-    ldrb    ip, [r0, #1]
-    add     r0, r0, #1
-    orr     r3, r3, r1, lsl #8
-    ldrb    r2, [r0, #1]
-    orr     r3, r3, ip, lsl #16
-    orr     r1, r3, r2, lsl #24
-    add     r2, r0, #2
-.L09d8:
-    ldr     r3, [lr, #420]
-    cmp     r3, #0
-    blt     .L09a0
-.L09e4:
-    pop     {r4, r5, sl, lr}
-    bx      lr
-.L09ec:
-    mov     r0, #0x80
-    bl      nrio_send_nand_command
-    mov     r0, r4
-    bl      nrio_command_55
-    b       .L0940
-.L0a00:
-    .word   nrio_got - (.Lgotpc_090c + 16)
-.L0a04:
     .word   0x000000c4
 
 .section .nrio.0a5c, "ax", %progbits
