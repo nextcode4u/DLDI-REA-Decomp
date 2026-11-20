@@ -1,0 +1,65 @@
+#include "state.h"
+
+#define STATE(name) __attribute__((section(".nrio_bss." #name), aligned(4)))
+
+u32 nrio_nand_address STATE(4d28);
+u32 nrio_state_4d2c STATE(4d2c);
+u32 nrio_state_4d30 STATE(4d30);
+u32 nrio_state_4d34 STATE(4d34);
+u32 nrio_state_4d38 STATE(4d38);
+u8 nrio_state_4d3c[0x40] STATE(4d3c);
+u32 nrio_sector_capacity STATE(4d7c);
+u32 nrio_state_4d80 STATE(4d80);
+u32 *nrio_physical_block_table STATE(4d84);
+u32 nrio_state_4d88 STATE(4d88);
+u32 nrio_state_4d8c STATE(4d8c);
+u32 nrio_state_4d90 STATE(4d90);
+u32 nrio_state_4d94 STATE(4d94);
+u32 nrio_state_4d98 STATE(4d98);
+u16 nrio_current_zone STATE(4d9c);
+u8 nrio_old_physical_block STATE(4da0);
+u8 nrio_state_4da4[0x40] STATE(4da4);
+u8 nrio_pending_page_count STATE(4de4);
+u32 nrio_state_4de8 STATE(4de8);
+u8 *nrio_free_block_table STATE(4dec);
+u32 nrio_nand_data_base STATE(4df0);
+u32 nrio_state_4df4 STATE(4df4);
+u32 nrio_state_4df8 STATE(4df8);
+u8 nrio_pages_per_block STATE(4dfc);
+u8 nrio_zone_free_cursor[0x100] STATE(4e00);
+u8 nrio_state_4f00[0x100] STATE(4f00);
+u8 nrio_spare[0x40] STATE(5000);
+u32 nrio_state_5040 STATE(5040);
+u32 nrio_current_sector STATE(5044);
+u32 nrio_state_5048 STATE(5048);
+u32 nrio_state_504c STATE(504c);
+u8 nrio_state_5050[0x100] STATE(5050);
+u32 nrio_state_5150 STATE(5150);
+u32 nrio_state_5154 STATE(5154);
+u8 nrio_state_5158[0x100] STATE(5158);
+u32 nrio_state_5258 STATE(5258);
+u32 nrio_state_525c STATE(525c);
+u32 nrio_state_5260 STATE(5260);
+u32 nrio_state_5264 STATE(5264);
+u8 nrio_state_5268[0x40] STATE(5268);
+u8 nrio_state_52a8[0x800] STATE(52a8);
+u8 nrio_state_5aa8[0x40] STATE(5aa8);
+u32 nrio_state_5ae8 STATE(5ae8);
+u8 *nrio_logical_block_map STATE(5aec);
+u8 nrio_page_in_block_mask STATE(5af0);
+u32 nrio_state_5af4 STATE(5af4);
+u32 nrio_state_5af8 STATE(5af8);
+u8 nrio_state_5afc[0x40] STATE(5afc);
+u32 nrio_state_5b3c STATE(5b3c);
+u32 nrio_state_5b40 STATE(5b40);
+u8 nrio_state_5b44[0x40] STATE(5b44);
+u32 nrio_state_5b84 STATE(5b84);
+u32 nrio_state_5b88 STATE(5b88);
+u8 nrio_pending_physical_block STATE(5b8c);
+u32 nrio_state_5b90 STATE(5b90);
+u8 nrio_pending_logical_block STATE(5b94);
+u32 nrio_state_5b98 STATE(5b98);
+u32 nrio_state_5b9c STATE(5b9c);
+u32 nrio_state_5ba0 STATE(5ba0);
+
+u32 nrio_cached_logical_page = 0xffffffff;
