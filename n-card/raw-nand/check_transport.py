@@ -291,8 +291,10 @@ def check_protected(image, nand_id):
 
 if __name__ == '__main__':
     path = Path(__file__).resolve().parent / 'compiled'
+    writable_path = path / 'write-enabled'
     for mode in ('readonly', 'recovery'):
-        image = (path / f'nrio-raw-{mode}.nds').read_bytes()
+        directory = writable_path if mode == 'recovery' else path
+        image = (directory / f'nrio-raw-{mode}.nds').read_bytes()
         for chip in (0x1500d3ec, 0x3500d3ec):
             check(image, mode == 'recovery', chip)
             if mode == 'recovery':
@@ -307,14 +309,14 @@ if __name__ == '__main__':
     check_spare(spare, 0x3500d5ec, 1_048_576)
     print('spare: page ordering, capacity, high row bits and write rejection passed')
 
-    spare_write = (path / 'nrio-raw-spare-write.nds').read_bytes()
+    spare_write = (writable_path / 'nrio-raw-spare-write.nds').read_bytes()
     for chip in (0x1500d3ec, 0x3500d3ec):
         check_spare_write(spare_write, chip)
         for failure in ('erase', 'program', 'readback'):
             check_failure(spare_write, chip, failure, pages_written=8)
     print('spare-write: raw spare replacement, main data preservation and failure handling passed')
 
-    protected = (path / 'nrio-raw-protected.nds').read_bytes()
+    protected = (writable_path / 'nrio-raw-protected.nds').read_bytes()
     for chip in (0x1500d3ec, 0x3500d3ec):
         check_protected(protected, chip)
     print('protected: block zero and crossing writes rejected, first unprotected block writable')

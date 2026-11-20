@@ -6,9 +6,8 @@ Use [nrio-raw-readonly.nds](compiled/nrio-raw-readonly.nds) for the first test. 
 | --- | --- | --- |
 | Read-only dump | [nrio-raw-readonly.dldi](compiled/nrio-raw-readonly.dldi) | [nrio-raw-readonly.nds](compiled/nrio-raw-readonly.nds) |
 | Read-only spare dump | [nrio-raw-spare-readonly.dldi](compiled/nrio-raw-spare-readonly.dldi) | [nrio-raw-spare-readonly.nds](compiled/nrio-raw-spare-readonly.nds) |
-| Spare recovery write | [nrio-raw-spare-write.dldi](compiled/nrio-raw-spare-write.dldi) | [nrio-raw-spare-write.nds](compiled/nrio-raw-spare-write.nds) |
-| Main-area write with block zero protected | [nrio-raw-protected.dldi](compiled/nrio-raw-protected.dldi) | [nrio-raw-protected.nds](compiled/nrio-raw-protected.nds) |
-| Main-area recovery write | [nrio-raw-recovery.dldi](compiled/nrio-raw-recovery.dldi) | [nrio-raw-recovery.nds](compiled/nrio-raw-recovery.nds) |
+
+The [write-enabled builds](compiled/write-enabled/) are in a separate folder. They can erase and rewrite physical NAND blocks. Start with the read-only downloads above for backups and inspection.
 
 ## Physical addressing
 
