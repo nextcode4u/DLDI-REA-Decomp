@@ -33,6 +33,9 @@ class Flash:
         self.flash = {}
         self.rows_seen = []
         self.erased_blocks = []
+        self.programmed_rows = []
+        self.failure = None
+        self.status = 0xc0
         self.opcode = self.page = self.column = self.words = 0
         self.spare = self.stream_offset = 0
         self.transmitting = False
@@ -65,11 +68,18 @@ class Flash:
                 self.program.clear()
             elif self.opcode == 0xd0:
                 self.erased_blocks.append(self.page)
-                for row in range(self.page, self.page + self.pages_per_block):
-                    self.flash.pop(row, None)
+                self.status = 0xc1 if self.failure == 'erase' else 0xc0
+                if self.status == 0xc0:
+                    for row in range(self.page, self.page + self.pages_per_block):
+                        self.flash.pop(row, None)
             elif self.opcode == 0x10:
                 assert len(self.program) == PAGE_BYTES
-                self.flash[self.page] = bytes(self.program)
+                self.programmed_rows.append(self.page)
+                self.status = 0xc1 if self.failure == 'program' else 0xc0
+                if self.status == 0xc0:
+                    if self.failure == 'readback':
+                        self.program[0] ^= 1
+                    self.flash[self.page] = bytes(self.program)
         elif command[1] == 0x55:
             self.page = (parameter >> 16) | (command[6] << 16)
             self.rows_seen.append(self.page)
@@ -93,7 +103,7 @@ class Flash:
             if self.opcode == 0x90:
                 reply = self.nand_id
             elif self.opcode == 0x70:
-                reply = 0xc0
+                reply = self.status
             else:
                 reply, = struct.unpack_from('<I', self.record(self.page), self.stream_offset)
                 self.stream_offset += 4
@@ -110,8 +120,9 @@ class Flash:
             self.vm.reg_write(reg, val)
         self.vm.reg_write(UC_ARM_REG_SP, STOP - 4096)
         self.vm.reg_write(UC_ARM_REG_LR, STOP)
-        self.vm.emu_start(self.entries[entry], STOP, count=12_000_000)
-        assert self.vm.reg_read(UC_ARM_REG_PC) == STOP
+        self.vm.emu_start(self.entries[entry], STOP, count=60_000_000)
+        pc = self.vm.reg_read(UC_ARM_REG_PC)
+        assert pc == STOP, f"Driver did not return: entry={entry}, pc={pc:#010x}"
         return self.vm.reg_read(UC_ARM_REG_R0)
 
 
@@ -152,10 +163,55 @@ def check(image, writable, nand_id):
         assert not device.erased_blocks
 
 
+def recovery_device(image, nand_id):
+    device = Flash(image, nand_id)
+    assert device.run(0) == 1
+    assert device.run(2, 0xfffffffe, device.pages_per_block * PAGE_BYTES, RAM + 0x10000)
+    return device
+
+
+def check_cross_block(image, nand_id):
+    device = recovery_device(image, nand_id)
+    page = device.pages_per_block
+    preserved_spare = b'\xff' + bytes(range(1, 64))
+    device.flash[page - 1] = b'\x33' * 2048 + preserved_spare
+    device.flash[page] = b'\x44' * 2048 + preserved_spare
+    offset = page * 4 - 1
+    payload = b'\x06' * 512 + b'\xe9' * 512
+    device.vm.mem_write(RAM, payload)
+    assert device.run(3, offset, 2, RAM) == 1
+    assert device.erased_blocks == [0, page]
+    assert device.programmed_rows == [page - 1, page]
+    assert device.record(page - 1)[:1536] == b'\x33' * 1536
+    assert device.record(page)[512:2048] == b'\x44' * 1536
+    assert device.record(page - 1)[2048:2096] == preserved_spare[:48]
+    assert device.record(page)[2064:] == preserved_spare[16:]
+    assert device.run(2, offset, 2, RAM) == 1
+    assert device.vm.mem_read(RAM, 1024) == payload
+
+
+def check_failure(image, nand_id, failure):
+    device = recovery_device(image, nand_id)
+    device.failure = failure
+    device.vm.mem_write(RAM, b'\x23' * 512)
+    assert not device.run(3, 0, 1, RAM)
+    assert device.erased_blocks == [0]
+    assert device.programmed_rows == ([] if failure == 'erase' else [0])
+    assert not device.run(4)  # clearStatus reports the latched error.
+    assert not device.run(3, device.pages_per_block * 4, 1, RAM)
+    assert device.erased_blocks == [0]
+    assert device.run(2, 0, 1, RAM) == 1  # Dumping remains available.
+
+
 if __name__ == '__main__':
     path = Path(__file__).resolve().parent / 'compiled'
     for mode in ('readonly', 'recovery'):
         image = (path / f'nrio-raw-{mode}.nds').read_bytes()
         for chip in (0x1500d3ec, 0x3500d3ec):
             check(image, mode == 'recovery', chip)
+            if mode == 'recovery':
+                check_cross_block(image, chip)
+                for failure in ('erase', 'program', 'readback'):
+                    check_failure(image, chip, failure)
         print(f'{mode}: physical sector 0, full capacity and write policy passed on both geometries')
+    print('Cross-block writes and erase, program and readback failure handling passed on both geometries')

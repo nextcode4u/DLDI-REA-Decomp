@@ -12,7 +12,7 @@ index 241e210..72e837f 100644
 
  # Libraries
 diff --git a/source/msc.c b/source/msc.c
-index 093e19f..66a3987 100644
+index 093e19f..8b43daf 100644
 --- a/source/msc.c
 +++ b/source/msc.c
 @@ -27,16 +27,48 @@
@@ -74,7 +74,28 @@ index 093e19f..66a3987 100644
  //   uint8_t sec_buffer[512];
    if (block_count_cached)
      return block_count_cached;
-@@ -166,6 +201,10 @@ ITCM_CODE int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
+@@ -154,10 +189,20 @@ ITCM_CODE bool tud_msc_start_stop_cb(uint8_t lun, uint8_t power_condition, bool
+   return true;
+ }
+
++// Keep host requests within the physical disk, away from the private DLDI calls.
++static bool raw_lba_out_of_range(uint32_t lba, uint32_t size) {
++  return raw_driver && (lba >= raw_info.sectors ||
++                        (size >> 9) > raw_info.sectors - lba);
++}
++
+ // Callback invoked when received READ10 command.
+ // Copy disk's data to buffer (up to bufsize) and return number of copied bytes.
+ ITCM_CODE int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset, void* buffer, uint32_t bufsize) {
+   const DISC_INTERFACE *io = dldiGetInternal();
++  if (raw_lba_out_of_range(lba, bufsize)) {
++    tud_msc_set_sense(lun, SCSI_SENSE_ILLEGAL_REQUEST, 0x21, 0);
++    return -1;
++  }
+
+   ui_toggle_blink_activity();
+   if (!(bufsize & 0x1FF) && !offset && io->readSectors(lba, bufsize >> 9, buffer)) {
+@@ -166,6 +211,10 @@ ITCM_CODE int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
    } else {
      ui_toggle_blink_activity();
      printf(UI_COLOR_ERROR "Read error [%ld, %ld]\n", lba, bufsize);
@@ -85,7 +106,7 @@ index 093e19f..66a3987 100644
      return 0;
    }
  }
-@@ -173,13 +212,17 @@ ITCM_CODE int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
+@@ -173,13 +222,21 @@ ITCM_CODE int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
  ITCM_CODE bool tud_msc_is_writable_cb(uint8_t lun) {
    (void) lun;
 
@@ -97,6 +118,10 @@ index 093e19f..66a3987 100644
  // Process data in buffer to disk's storage and return number of written bytes
  ITCM_CODE int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset, uint8_t* buffer, uint32_t bufsize) {
    const DISC_INTERFACE *io = dldiGetInternal();
++  if (raw_lba_out_of_range(lba, bufsize)) {
++    tud_msc_set_sense(lun, SCSI_SENSE_ILLEGAL_REQUEST, 0x21, 0);
++    return -1;
++  }
 +  if (raw_driver && !raw_writable) {
 +    tud_msc_set_sense(lun, SCSI_SENSE_DATA_PROTECT, 0x27, 0);
 +    return -1;
@@ -104,7 +129,7 @@ index 093e19f..66a3987 100644
 
    ui_toggle_blink_write_activity();
    if (!(bufsize & 0x1FF) && !offset && io->writeSectors(lba, bufsize >> 9, buffer)) {
-@@ -188,6 +231,10 @@ ITCM_CODE int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
+@@ -188,6 +245,10 @@ ITCM_CODE int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
    } else {
      ui_toggle_blink_write_activity();
      printf(UI_COLOR_ERROR "Write error [%ld, %ld]\n", lba, bufsize);
