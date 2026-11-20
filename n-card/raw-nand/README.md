@@ -7,6 +7,7 @@ Use [nrio-raw-readonly.nds](compiled/nrio-raw-readonly.nds) for the first test. 
 | Read-only dump | [nrio-raw-readonly.dldi](compiled/nrio-raw-readonly.dldi) | [nrio-raw-readonly.nds](compiled/nrio-raw-readonly.nds) |
 | Read-only spare dump | [nrio-raw-spare-readonly.dldi](compiled/nrio-raw-spare-readonly.dldi) | [nrio-raw-spare-readonly.nds](compiled/nrio-raw-spare-readonly.nds) |
 | Spare recovery write | [nrio-raw-spare-write.dldi](compiled/nrio-raw-spare-write.dldi) | [nrio-raw-spare-write.nds](compiled/nrio-raw-spare-write.nds) |
+| Main-area write with block zero protected | [nrio-raw-protected.dldi](compiled/nrio-raw-protected.dldi) | [nrio-raw-protected.nds](compiled/nrio-raw-protected.nds) |
 | Main-area recovery write | [nrio-raw-recovery.dldi](compiled/nrio-raw-recovery.dldi) | [nrio-raw-recovery.nds](compiled/nrio-raw-recovery.nds) |
 
 ## Physical addressing
@@ -28,6 +29,10 @@ Save main and spare dumps before writing. The same erase-block, bad-marker, and 
 ## Recovery writes
 
 Take and retain a full read-only image before using the write-enabled build. Use physical offsets and an image appropriate for the target N-Card. A USB write can erase and rewrite an entire NAND erase block, even for a single changed sector. The driver stages that block in RAM supplied by the USB app, retains untouched data and spare bytes, updates NRIO ECC for changed sectors, and checks the resulting data and spare bytes by reading the block back. It stops further writes after a failure until driver startup. A request spanning two erase blocks can commit the first block before encountering an error in the second. It rejects unfamiliar spare markers in the first two pages of a block. The path has no remapping or power-loss recovery. Boot-region ECC and any hardware write protection still need testing on a physical card.
+
+## Main-area write with block zero protected
+
+The protected build reads the full main area and rejects every write touching the first physical erase block before any erase or program command. This protects the region below `0x2000` during an erase-block rewrite. The first writable byte is `0x20000` on 64-page blocks or `0x40000` on 128-page blocks. The banner at `0x2000` remains readable and is protected from writes in this build. Later blocks can still be erased and rewritten. Emulation covers writes below and at the banner, requests that cross the boundary, and the first allowed write on both geometries.
 
 ## USB integration and rebuild
 

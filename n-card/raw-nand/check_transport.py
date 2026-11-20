@@ -270,6 +270,25 @@ def check_spare_write(image, nand_id):
     assert device.erased_blocks == [0, page]
 
 
+def check_protected(image, nand_id):
+    device = recovery_device(image, nand_id)
+    first_writable = device.pages_per_block * 4
+    boot_page = b'\x12' * PAGE_BYTES
+    device.flash[0] = boot_page
+    payload = b'\x23' * 2048
+    device.vm.mem_write(RAM, payload)
+    for lba, count in ((0, 1), (15, 2), (16, 4), (first_writable - 1, 2)):
+        assert not device.run(3, lba, count, RAM)
+        assert not device.erased_blocks and not device.programmed_rows
+    assert device.run(2, 0, 1, RAM + 0x2000)
+    assert device.vm.mem_read(RAM + 0x2000, 512) == boot_page[:512]
+    assert device.run(3, first_writable, 1, RAM)
+    assert device.erased_blocks == [device.pages_per_block]
+    assert device.programmed_rows == [device.pages_per_block]
+    assert device.record(0) == boot_page
+    assert device.record(device.pages_per_block)[:512] == payload[:512]
+
+
 if __name__ == '__main__':
     path = Path(__file__).resolve().parent / 'compiled'
     for mode in ('readonly', 'recovery'):
@@ -294,3 +313,8 @@ if __name__ == '__main__':
         for failure in ('erase', 'program', 'readback'):
             check_failure(spare_write, chip, failure, pages_written=8)
     print('spare-write: raw spare replacement, main data preservation and failure handling passed')
+
+    protected = (path / 'nrio-raw-protected.nds').read_bytes()
+    for chip in (0x1500d3ec, 0x3500d3ec):
+        check_protected(protected, chip)
+    print('protected: block zero and crossing writes rejected, first unprotected block writable')

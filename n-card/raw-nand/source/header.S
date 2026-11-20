@@ -8,7 +8,11 @@ nrio_raw_header:
 .ifdef RAW_NAND_SPARE
     .asciz "N-Card Spare RW"
 .else
+.ifdef RAW_NAND_PROTECT_BOOT
+    .asciz "N-Card Guarded"
+.else
     .asciz "N-Card Raw R/W"
+.endif
 .endif
 .else
 .ifdef RAW_NAND_SPARE

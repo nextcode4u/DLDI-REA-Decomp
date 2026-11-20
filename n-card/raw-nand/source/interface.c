@@ -142,6 +142,12 @@ bool nrio_raw_write(u32 sector, u32 count, const void *buffer)
     if (!workspace || write_error.stage != NRIO_RAW_WRITE_NONE || !buffer || !valid_range(sector, count)) {
         return false;
     }
+#ifdef RAW_NAND_PROTECT_BOOT
+    // Erasing to update any page of block zero would also erase the boot pages.
+    if (count && sector < pages_per_block * SECTORS_PER_PAGE) {
+        return false;
+    }
+#endif
     return restore_sectors(sector, count, buffer, pages_per_block, workspace, &write_error);
 #else
     (void)sector;
