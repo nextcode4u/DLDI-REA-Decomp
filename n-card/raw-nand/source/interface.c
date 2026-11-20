@@ -2,6 +2,8 @@
 
 static u32 sector_count;
 static u32 pages_per_block;
+
+enum { SPARES_PER_SECTOR = SECTOR_SIZE / SPARE_SIZE };
 static u32 nand_id;
 
 #ifdef RAW_NAND_WRITE
@@ -41,6 +43,9 @@ bool nrio_raw_startup(void)
         sector_count = sectors_per_128_mib * 16;
     }
     pages_per_block = nand_id & (0x20u << 24) ? 128 : 64;
+#ifdef RAW_NAND_SPARE
+    sector_count /= SECTORS_PER_PAGE * SPARES_PER_SECTOR;
+#endif
     return sector_count != 0;
 }
 
@@ -100,6 +105,15 @@ bool nrio_raw_read(u32 sector, u32 count, void *buffer)
         return false;
     }
     u8 *output = buffer;
+#ifdef RAW_NAND_SPARE
+    u32 page = sector * SPARES_PER_SECTOR;
+    for (u32 i = 0; i < count * SPARES_PER_SECTOR; ++i) {
+        if (!nand_load_page(page + i, true) || !nand_read_spare(output)) {
+            return false;
+        }
+        output += SPARE_SIZE;
+    }
+#else
     u32 loaded_page = (u32)-1;
     while (count--) {
         u32 page = sector / SECTORS_PER_PAGE;
@@ -113,6 +127,7 @@ bool nrio_raw_read(u32 sector, u32 count, void *buffer)
         output += SECTOR_SIZE;
         ++sector;
     }
+#endif
     return true;
 }
 

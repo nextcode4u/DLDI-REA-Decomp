@@ -203,6 +203,25 @@ def check_failure(image, nand_id, failure):
     assert device.run(2, 0, 1, RAM) == 1  # Dumping remains available.
 
 
+def check_spare(image, nand_id, pages):
+    device = Flash(image, nand_id)
+    assert device.run(0) == 1
+    assert device.run(2, 0xffffffff, 0, RAM) == 1
+    info = struct.unpack('<IIII', device.vm.mem_read(RAM, 16))
+    assert info == (1, pages // 8, 0, nand_id)
+    for page in range(16):
+        device.flash[page] = b'\x31' * 2048 + bytes([page]) * 64
+    assert device.run(2, 0, 2, RAM + 1)
+    assert device.vm.mem_read(RAM + 1, 1024) == b''.join(bytes([i]) * 64 for i in range(16))
+    assert device.rows_seen == list(range(16))
+    assert device.run(2, info[1] - 1, 1, RAM)
+    assert device.rows_seen[-8:] == list(range(pages - 8, pages))
+    assert not device.run(2, info[1] - 1, 2, RAM)
+    assert not device.run(2, 0xfffffffe, 128 * PAGE_BYTES, RAM)
+    assert not device.run(3, 0, 1, RAM)
+    assert not device.erased_blocks and not device.programmed_rows
+
+
 if __name__ == '__main__':
     path = Path(__file__).resolve().parent / 'compiled'
     for mode in ('readonly', 'recovery'):
@@ -215,3 +234,7 @@ if __name__ == '__main__':
                     check_failure(image, chip, failure)
         print(f'{mode}: physical sector 0, full capacity and write policy passed on both geometries')
     print('Cross-block writes and erase, program and readback failure handling passed on both geometries')
+    spare = (path / 'nrio-raw-spare.nds').read_bytes()
+    check_spare(spare, 0x1500d3ec, 524_288)
+    check_spare(spare, 0x3500d5ec, 1_048_576)
+    print('spare: page ordering, capacity, high row bits and write rejection passed')

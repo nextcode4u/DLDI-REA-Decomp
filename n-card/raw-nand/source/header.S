@@ -7,7 +7,11 @@ nrio_raw_header:
 .ifdef RAW_NAND_WRITE
     .asciz "N-Card Raw R/W"
 .else
+.ifdef RAW_NAND_SPARE
+    .asciz "N-Card Spare"
+.else
     .asciz "N-Card Raw Read"
+.endif
 .endif
     .space 0x40 - (. - nrio_raw_header)
     .word nrio_raw_header, __bss_start

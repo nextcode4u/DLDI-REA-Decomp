@@ -5,6 +5,7 @@ Use [nrio-raw-readonly.nds](compiled/nrio-raw-readonly.nds) for the first test. 
 | Build | Standalone DLDI | USB app |
 | --- | --- | --- |
 | Read-only dump | [nrio-raw-readonly.dldi](compiled/nrio-raw-readonly.dldi) | [nrio-raw-readonly.nds](compiled/nrio-raw-readonly.nds) |
+| Read-only spare dump | [nrio-raw-spare.dldi](compiled/nrio-raw-spare.dldi) | [nrio-raw-spare.nds](compiled/nrio-raw-spare.nds) |
 | Recovery write | [nrio-raw-recovery.dldi](compiled/nrio-raw-recovery.dldi) | [nrio-raw-recovery.nds](compiled/nrio-raw-recovery.nds) |
 
 ## Physical addressing
@@ -12,6 +13,10 @@ Use [nrio-raw-readonly.nds](compiled/nrio-raw-readonly.nds) for the first test. 
 USB sector `n` maps to NAND main-data byte offset `n * 512`. The driver queries the chip ID for capacity and erase geometry. It bypasses the original block-table discovery, FAT volume offset, and logical block remapping. In the stock driver, `nrio_block_table_address` locates the FTL's physical block map, and the separate `nrio_nand_address` guards block low-address programming. The recovery driver uses explicit physical row and column addresses, including row zero, and checks requests against the detected chip capacity.
 
 The USB image contains all addressable main data, including boot and other normally hidden regions. The 64 spare bytes per page are handled internally during writes. The 512-byte USB sector interface exposes main data only.
+
+## Spare-area dump
+
+The spare-area USB build packs eight consecutive 64-byte spare records into each 512-byte USB sector. The first 64 bytes in the dump belong to NAND page 0. For page `n`, the record starts at offset `n * 64` in the spare dump and its corresponding main data starts at `n * 2048` in the main dump. A 2 GiB N-Card should expose **131,072 USB sectors (64 MiB)** in the spare-area build. The exposed records include ECC and other spare bytes as returned by the N-Card bridge. Their contents can be compared between a working card and the damaged card. The location of the missing boot data remains unconfirmed.
 
 ## Recovery writes
 
@@ -28,7 +33,7 @@ Build the standalone drivers from this folder with `make DEVKITPRO=/path/to/r20-
 
 ## Verification
 
-`python3 check_transport.py` runs the relocated DLDI extracted from each compiled NDS in Unicorn. It checks sector zero, the final sector, out-of-range rejection, both erase geometries, write gating, preservation of adjacent data and spare bytes across erase-block boundaries, and bad-marker refusal against a simulated NAND bridge. It also injects erase failures, program failures, and readback mismatches to check that the driver rejects later writes while allowing reads. This verifies driver execution in emulation.
+`python3 check_transport.py` runs the relocated DLDI extracted from each compiled NDS in Unicorn. It checks sector zero, the final sector, out-of-range rejection, both erase geometries, write gating, preservation of adjacent data and spare bytes across erase-block boundaries, and bad-marker refusal against a simulated NAND bridge. It also injects erase failures, program failures, and readback mismatches to check that the driver rejects later writes while allowing reads. The spare-area test also checks eight-record packing, capacity, the final physical page, and write rejection. Spare-area reads remain unverified on physical hardware.
 
 ## Hardware results
 

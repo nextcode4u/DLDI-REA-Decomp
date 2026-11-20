@@ -27,7 +27,7 @@ CPPFLAGS := -DARM9 -isystem "$(call tool_path,$(DEVKITPRO)/libnds/include)" \
 GCC_SEARCH := -B"$(call tool_path,$(GCC_LIBEXEC))/" -B"$(call tool_path,$(DEVKITARM)/bin)/"
 
 .PHONY: all clean
-all: $(BUILD)/nrio-raw-readonly.dldi $(BUILD)/nrio-raw-recovery.dldi
+all: $(BUILD)/nrio-raw-readonly.dldi $(BUILD)/nrio-raw-recovery.dldi $(BUILD)/nrio-raw-spare.dldi
 
 $(BUILD)/read-only/%.o: source/%.c Makefile
 	@mkdir -p "$(@D)"
@@ -39,6 +39,11 @@ $(BUILD)/recovery/%.o: source/%.c Makefile
 	"$(CC)" $(GCC_SEARCH) $(CPPFLAGS) $(CFLAGS) -DRAW_NAND_WRITE -MMD -MP -S "$<" -o "$(@:.o=.s)"
 	"$(AS)" "$(@:.o=.s)" -o "$@"
 
+$(BUILD)/spare/%.o: source/%.c Makefile
+	@mkdir -p "$(@D)"
+	"$(CC)" $(GCC_SEARCH) $(CPPFLAGS) $(CFLAGS) -DRAW_NAND_SPARE -MMD -MP -S "$<" -o "$(@:.o=.s)"
+	"$(AS)" "$(@:.o=.s)" -o "$@"
+
 $(BUILD)/read-only/header.o: source/header.S Makefile
 	@mkdir -p "$(@D)"
 	"$(AS)" "$<" -o "$@"
@@ -47,7 +52,12 @@ $(BUILD)/recovery/header.o: source/header.S Makefile
 	@mkdir -p "$(@D)"
 	"$(AS)" --defsym RAW_NAND_WRITE=1 "$<" -o "$@"
 
+$(BUILD)/spare/header.o: source/header.S Makefile
+	@mkdir -p "$(@D)"
+	"$(AS)" --defsym RAW_NAND_SPARE=1 "$<" -o "$@"
+
 READ_ONLY_OBJECTS := $(addprefix $(BUILD)/read-only/,header.o interface.o nand.o)
+SPARE_OBJECTS := $(addprefix $(BUILD)/spare/,header.o interface.o nand.o)
 RECOVERY_OBJECTS := $(addprefix $(BUILD)/recovery/,header.o interface.o nand.o restore.o)
 
 $(BUILD)/nrio-raw-readonly.elf: $(READ_ONLY_OBJECTS) linker.ld
@@ -56,10 +66,13 @@ $(BUILD)/nrio-raw-readonly.elf: $(READ_ONLY_OBJECTS) linker.ld
 $(BUILD)/nrio-raw-recovery.elf: $(RECOVERY_OBJECTS) linker.ld
 	"$(LD)" -T linker.ld -o "$@" $(RECOVERY_OBJECTS)
 
+$(BUILD)/nrio-raw-spare.elf: $(SPARE_OBJECTS) linker.ld
+	"$(LD)" -T linker.ld -o "$@" $(SPARE_OBJECTS)
+
 $(BUILD)/%.dldi: $(BUILD)/%.elf
 	"$(OBJCOPY)" -O binary "$<" "$@"
 
 clean:
 	rm -rf "$(BUILD)"
 
--include $(READ_ONLY_OBJECTS:.o=.d) $(RECOVERY_OBJECTS:.o=.d)
+-include $(READ_ONLY_OBJECTS:.o=.d) $(RECOVERY_OBJECTS:.o=.d) $(SPARE_OBJECTS:.o=.d)
