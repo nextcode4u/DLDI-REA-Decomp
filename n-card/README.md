@@ -10,7 +10,7 @@ Use devkitARM r20 with its GCC 4.1.1, binutils, and an era-compatible libnds ins
 make DEVKITPRO=/path/to/r20-sdk
 ```
 
-In this workspace the SDK root is `/mnt/d/WORKSPACES/jenesisds-r20-sdk.A6WpYa`. The default build writes `build/nrio.dldi`, `build/nrio.elf`, and `build/nrio.map`.
+In this workspace the SDK root is `/mnt/d/WORKSPACES/jenesisds-r20-sdk.A6WpYa`. The default build writes `build/nrio.dldi`, `build/nrio.elf`, and `build/nrio.map`. The checked-in C binary and comparison report are in [compiled-from-c](compiled-from-c/).
 
 ## Byte-matching build
 
