@@ -52,4 +52,4 @@ HxD also showed the spare-area device with 131,072 sectors (64 MiB). At spare-du
 
 Apache Thunder used the writable spare-area USB build to copy USB sector 0 from a working N-Card to the damaged card. In this view, sector 0 is the 512-byte group of spare records for physical NAND pages 0–7. The recovery driver rewrites the affected erase block while preserving the staged main data.
 
-After the spare write, Apache Thunder reported that **Blowfish initialization and the banner worked again**. Full boot was still unconfirmed at the time of the report. The test involved all eight spare records, so it does not identify the specific page or byte range responsible for the fix.
+After the spare write, Apache Thunder reported that **Blowfish initialization and the banner worked again**. A subsequent launch still stopped at a white screen. Apache Thunder planned to inspect the main area for remaining differences. The test involved all eight spare records, so it does not identify the specific page or byte range responsible for the fix.
