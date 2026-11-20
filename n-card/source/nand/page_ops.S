@@ -247,64 +247,6 @@ nrio_page_operation:
 .L1cb4:
     .word   0x00000018
 
-.section .nrio.1dc4, "ax", %progbits
-
-.global nrio_find_block_table
-.type nrio_find_block_table, %function
-nrio_find_block_table:
-    push    {r4, r5, r6, r7, sl, lr}
-.Lgotpc_1dc8:
-    ldr     sl, .L1e54
-    ldr     r6, .L1e58
-    add     sl, pc, sl
-    ldr     r3, [sl, r6]
-    ldr     r1, [r3]
-    ldr     r2, .L1e5c
-    ldr     r3, .L1e60
-    ldr     r5, [sl, r2]
-    ldr     r7, [sl, r3]
-    sub     r4, r1, #0x100000
-    b       .L1e20
-.L1df4:
-    bl      nrio_set_nand_address
-    mov     r0, #10
-    bl      nrio_page_operation
-    bl      nrio_check_spare_markers
-    cmp     r0, #0
-    bne     .L1e18
-    ldrb    r3, [r7, #11]
-    cmp     r3, #0xab
-    beq     .L1e40
-.L1e18:
-    ldrb    r3, [r5]
-    add     r4, r4, r3, lsl #11
-.L1e20:
-    ldr     r3, [sl, r6]
-    ldr     r2, [r3]
-    cmp     r4, r2
-    mov     r0, r4
-    bne     .L1df4
-    mov     r0, #0
-.L1e38:
-    pop     {r4, r5, r6, r7, sl, lr}
-    bx      lr
-.L1e40:
-    ldr     r3, .L1e64
-    ldr     r2, [sl, r3]
-    mov     r0, #1
-    str     r4, [r2]
-    b       .L1e38
-.L1e54:
-    .word   nrio_got - (.Lgotpc_1dc8 + 16)
-.L1e58:
-    .word   0x00000058
-.L1e5c:
-    .word   0x00000068
-.L1e60:
-    .word   0x00000074
-.L1e64:
-    .word   0x000000f8
-
 .section .nrio.1ec8, "ax", %progbits
 
 .global nrio_copy_nand_pages

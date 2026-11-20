@@ -40,11 +40,12 @@ SRC_DIRS := source/dldi source/card source/nand source/ftl source/system
 C_SOURCES := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c))
 ASM_SOURCES := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.S))
 C_RECONSTRUCTION := source/card/nand_transfer.c source/nand/page_ops.c \
-                    source/ftl/block_tables.c source/ftl/mapping.c source/ftl/write.c
+                    source/ftl/mapping.c source/ftl/write.c
 
 ifeq ($(C_ONLY),1)
 BUILD := build/c-only
 ASM_SOURCES := source/dldi/header.S source/system/data.S
+$(BUILD)/ftl/block_tables.o: CPPFLAGS += -DNRIO_C_ONLY
 else
 BUILD := build
 C_SOURCES := $(filter-out $(C_RECONSTRUCTION),$(C_SOURCES))
@@ -60,6 +61,9 @@ all: $(BUILD)/nrio.dldi
 
 # These routines call only ARM code. GCC can then emit a direct tail branch.
 $(BUILD)/ftl/sector_read.o: CFLAGS += -mno-thumb-interwork
+
+# Retain the original block-table search loop entry.
+$(BUILD)/ftl/block_tables.o: CFLAGS += -fno-tree-ch
 
 $(C_OBJECTS): $(BUILD)/%.o: source/%.c Makefile scripts/fix-got.sed
 	@mkdir -p "$(@D)"

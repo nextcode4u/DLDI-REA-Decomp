@@ -1,6 +1,6 @@
 # NRIO DLDI reconstruction
 
-The standalone build matches all 19,724 bytes of XuluMenu's `nrio.dldi`. It covers the DLDI interface, Slot-1 command transport, NAND access, and flash translation layer. The matching build compiles 50 routines from C and assembles the remaining 10. The all-C build compiles all 60 driver routines from C, including the bulk transfers with ECC generation and the translation layer. Its binary still differs from the reference. The devkitARM startup and unsigned division code are linked from the historical toolchain. [Pinned XuluMenu reference](https://github.com/ApacheThunder/XuluMenu/blob/7ceabcbc9331f84a8c4fcde38b6f60193405ee8a/nrio.dldi)
+The standalone build matches all 19,724 bytes of XuluMenu's `nrio.dldi`. It covers the DLDI interface, Slot-1 command transport, NAND access, and flash translation layer. The matching build compiles 52 routines from C and assembles the remaining eight. The all-C build compiles all 60 driver routines from C, including the bulk transfers with ECC generation and the translation layer. Its binary still differs from the reference. The devkitARM startup and unsigned division code are linked from the historical toolchain. [Pinned XuluMenu reference](https://github.com/ApacheThunder/XuluMenu/blob/7ceabcbc9331f84a8c4fcde38b6f60193405ee8a/nrio.dldi)
 
 ## Build and compare
 
@@ -25,7 +25,7 @@ Expected SHA-256
 make DEVKITPRO=/path/to/r20-sdk C_ONLY=1
 ```
 
-The all-C output is `build/c-only/nrio.dldi`. It is 19,988 bytes. Both builds use the DLDI header, data tables, and historical compiler runtime.
+The all-C output is `build/c-only/nrio.dldi`. Both builds use the DLDI header, data tables, and historical compiler runtime. Byte matching remains for the two ECC transfers, page operation dispatch, NAND page copying, geometry initialization, zone loading, and the two mapped sector operations.
 
 To compare the C implementations with the matching binary, build both configurations and run the ARM926 differential checks with Python and Unicorn 2.1.4 installed.
 

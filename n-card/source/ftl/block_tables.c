@@ -1,34 +1,50 @@
 #include "state.h"
 
+extern void nrio_page_operation(u32 operation);
+extern u8 nrio_check_spare_markers(void);
+extern void nrio_set_nand_address(u32 address);
+
+/* Keep the search, stride, and success paths in the original GCC layout. */
+NRIO_ROUTINE(1dc4) u32 nrio_find_block_table(void)
+{
+    u32 address = nrio_nand_data_base - 0x100000;
+
+    goto check_address;
+
+read_spare:
+    nrio_set_nand_address(address);
+    nrio_page_operation(10);
+    if (nrio_check_spare_markers() != 0 || nrio_spare[11] != 0xab) {
+        goto next_block;
+    }
+    goto found;
+
+check_address:
+    if (address != nrio_nand_data_base) {
+        goto read_spare;
+    }
+    return false;
+
+next_block:
+    address += (u32)nrio_pages_per_block << 11;
+    goto check_address;
+
+found:
+    nrio_block_table_address = address;
+    return true;
+}
+
+#ifdef NRIO_C_ONLY
 #define LOCAL __attribute__((visibility("hidden")))
 
 extern const char mftl_sectors[] LOCAL, mftl_spare[] LOCAL, mftl_blocktab[] LOCAL;
 extern const char mftl_freetab[] LOCAL, mftl_freeptr[] LOCAL;
 
-extern void nrio_page_operation(u32 operation);
-extern u8 nrio_check_spare_markers(void);
-extern void nrio_set_nand_address(u32 address);
 extern void nrio_require_word_alignment(u32 address, const char *message);
 extern void nrio_load_physical_block_table(void);
 extern void nrio_clear_block_map(void);
 extern void nrio_clear_free_table(void);
 extern void nrio_load_zone(void);
-
-NRIO_ROUTINE(1dc4) u32 nrio_find_block_table(void)
-{
-    u32 address = nrio_nand_data_base - 0x100000;
-
-    while (address != nrio_nand_data_base) {
-        nrio_set_nand_address(address);
-        nrio_page_operation(10);
-        if (nrio_check_spare_markers() == 0 && nrio_spare[11] == 0xab) {
-            nrio_block_table_address = address;
-            return true;
-        }
-        address += (u32)nrio_pages_per_block << 11;
-    }
-    return false;
-}
 
 NRIO_ROUTINE(31a8) int nrio_init_nand_geometry(u32 block_size, u16 blocks, u32 data_base, u32 mode)
 {
@@ -81,3 +97,4 @@ NRIO_ROUTINE(31a8) int nrio_init_nand_geometry(u32 block_size, u16 blocks, u32 d
     nrio_load_zone();
     return 0;
 }
+#endif

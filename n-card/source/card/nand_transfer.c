@@ -87,29 +87,6 @@ static inline void finish_ecc(u8 *ecc, u32 all, u32 word_bit0, u32 word_bit1, u3
     ecc[1] = (u8)(code >> 8);
 }
 
-NRIO_ROUTINE(0838) void nrio_finish_nand_write(const u32 *input)
-{
-    if ((nrio_nand_address & 0xfffc0000u) == 0) {
-        return;
-    }
-    CARD_COMMAND[0] = 0xd1;
-    CARD_COMMAND[1] = 0x44;
-    CARD_COMMAND[6] = 0;
-    const u32 *cursor = input;
-    const void *end = cursor + 16;
-    do {
-        u32 word = *cursor++;
-        CARD_COMMAND[2] = (u8)word;
-        CARD_COMMAND[3] = (u8)(word >> 8);
-        CARD_COMMAND[4] = (u8)(word >> 16);
-        CARD_COMMAND[5] = (u8)(word >> 24);
-        CARD_CR2 = 0xa7000000;
-        (void)read_fifo_word();
-    } while (cursor != end);
-    nrio_send_nand_command(0x10);
-    nrio_wait_nand();
-}
-
 NRIO_ROUTINE(0a5c) void nrio_read_nand_sector_with_ecc(u8 *buffer, u32 sector, u8 *ecc)
 {
     nrio_send_nand_command(0x05);

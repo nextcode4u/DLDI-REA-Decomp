@@ -270,3 +270,31 @@ NRIO_ROUTINE(0758) void nrio_write_nand_spare(const u32 *input)
     nrio_send_nand_command(0x10);
     nrio_wait_nand();
 }
+
+NRIO_ROUTINE(0838) void nrio_finish_nand_write(const u32 *input)
+{
+    /* Match GCC's register assignments for the input and FIFO cursor. */
+    register u32 start __asm__("ip") = (u32)input;
+    __asm__ ("" : "+r"(start));
+    if ((nrio_nand_address & 0xfffc0000u) == 0) {
+        return;
+    }
+    CARD_COMMAND[0] = 0xd1;
+    register const u32 *cursor __asm__("lr") = (const u32 *)start;
+    /* Keep cursor setup ahead of the second command byte. */
+    __asm__ ("" : "+r"(cursor) : "r"(0x44), "m"(CARD_COMMAND[1]));
+    CARD_COMMAND[1] = 0x44;
+    CARD_COMMAND[6] = 0;
+    const void *end = cursor + 16;
+    do {
+        u32 word = *cursor++;
+        CARD_COMMAND[2] = (u8)word;
+        CARD_COMMAND[3] = (u8)(word >> 8);
+        CARD_COMMAND[4] = (u8)(word >> 16);
+        CARD_COMMAND[5] = (u8)(word >> 24);
+        CARD_CR2 = 0xa7000000;
+        (void)read_reply();
+    } while (__builtin_expect((u32)cursor != (u32)end, 1));
+    nrio_send_nand_command(0x10);
+    nrio_wait_nand();
+}
