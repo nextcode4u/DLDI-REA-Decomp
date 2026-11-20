@@ -8,4 +8,6 @@ These builds can erase and rewrite physical NAND. A wrong image or offset, a fai
 | Main-area recovery write | [nrio-raw-recovery.nds](nrio-raw-recovery.nds) | [nrio-raw-recovery.dldi](nrio-raw-recovery.dldi) |
 | Spare-area recovery write | [nrio-raw-spare-write.nds](nrio-raw-spare-write.nds) | [nrio-raw-spare-write.dldi](nrio-raw-spare-write.dldi) |
 
+A separate [banner-only build](banner-only/) accepts a single page-4 write when prepared with matching target spare records and the exact replacement payload.
+
 The protected build rejects writes touching the first erase block. It can still rewrite later blocks, including blocks that may contain boot data. The main-area and spare-area views use different sector layouts. Check the offset mapping before writing. [Recovery documentation](../../README.md)

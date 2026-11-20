@@ -1,10 +1,14 @@
 #include "raw_nand.h"
+#ifdef RAW_NAND_BANNER
+#include "banner_plan.h"
+#endif
 #ifdef RAW_NAND_SPARE
 enum { UPDATE_SIZE = SPARE_SIZE, UPDATES_PER_PAGE = 1, UPDATE_OFFSET = PAGE_SIZE };
 #else
-#include "../../source/card/nand_ecc.h"
-
 enum { UPDATE_SIZE = SECTOR_SIZE, UPDATES_PER_PAGE = SECTORS_PER_PAGE, UPDATE_OFFSET = 0 };
+#endif
+#if !defined(RAW_NAND_SPARE) && !defined(RAW_NAND_BANNER)
+#include "../../source/card/nand_ecc.h"
 
 static u32 load_word(const u8 *in)
 {
@@ -45,6 +49,18 @@ static void regenerate_ecc(u8 *record, u32 column)
 
 enum { UPDATES_PER_SECTOR = SECTOR_SIZE / UPDATE_SIZE };
 
+#ifdef RAW_NAND_BANNER
+// Patched offline in the shipped template. Keep the plan local for PC-relative access.
+static volatile struct nrio_banner_plan nrio_banner_plan = {
+    .signature = "NRIO-BANNER-v1",
+};
+
+bool banner_is_armed(void)
+{
+    return nrio_banner_plan.armed == 1;
+}
+#endif
+
 static bool read_page(u32 page, u8 *record)
 {
     if (!nand_load_page(page, false)) {
@@ -58,7 +74,11 @@ static bool read_page(u32 page, u8 *record)
     return nand_load_page(page, true) && nand_read_spare(record + PAGE_SIZE);
 }
 
+#ifdef RAW_NAND_BANNER
+static bool equal(const u8 *a, const volatile u8 *b, u32 size)
+#else
 static bool equal(const u8 *a, const u8 *b, u32 size)
+#endif
 {
     for (u32 i = 0; i < size; ++i) {
         if (a[i] != b[i]) return false;
@@ -85,14 +105,24 @@ static bool fail_write(struct nrio_raw_write_error *error, u32 stage, u32 page, 
 static bool rewrite_block(u32 page, u32 pages, u32 offset, u32 count,
                           const u8 *input, u8 *records, struct nrio_raw_write_error *error)
 {
+#ifdef RAW_NAND_BANNER
+    if (page != 0 || offset != BANNER_LBA || count != SECTORS_PER_PAGE ||
+        !equal(input, nrio_banner_plan.replacement_main, PAGE_SIZE)) return false;
+#endif
     for (u32 i = 0; i < pages; ++i) {
         u8 *record = records + i * PAGE_RECORD_SIZE;
         if (!read_page(page + i, record))
             return fail_write(error, NRIO_RAW_WRITE_READ_BLOCK, page + i, 0);
+#ifdef RAW_NAND_BANNER
+        if (i < BANNER_EXPECTED_PAGES &&
+            !equal(record + PAGE_SIZE, nrio_banner_plan.expected_spare[i], SPARE_SIZE))
+            return fail_write(error, NRIO_RAW_WRITE_MARKER, page + i, record[PAGE_SIZE]);
+#else
         // Refuse unfamiliar markers on the first two physical pages.
         u8 marker = record[PAGE_SIZE];
         if (i < 2 && marker != 0xff && marker != 0x55)
             return fail_write(error, NRIO_RAW_WRITE_MARKER, page + i, marker);
+#endif
     }
 
     bool changed = false;
@@ -104,12 +134,19 @@ static bool rewrite_block(u32 page, u32 pages, u32 offset, u32 count,
         const u8 *source = input + i * UPDATE_SIZE;
         if (!equal(data, source, UPDATE_SIZE)) {
             for (u32 j = 0; j < UPDATE_SIZE; ++j) data[j] = source[j];
-#ifndef RAW_NAND_SPARE
+#if !defined(RAW_NAND_SPARE) && !defined(RAW_NAND_BANNER)
             regenerate_ecc(record, column);
 #endif
             changed = true;
         }
     }
+#ifdef RAW_NAND_BANNER
+    u8 *banner_spare = records + BANNER_PAGE * PAGE_RECORD_SIZE + PAGE_SIZE;
+    if (!equal(banner_spare, nrio_banner_plan.replacement_spare, SPARE_SIZE)) {
+        for (u32 i = 0; i < SPARE_SIZE; ++i) banner_spare[i] = nrio_banner_plan.replacement_spare[i];
+        changed = true;
+    }
+#endif
     if (!changed) return true;
 
     if (!nand_erase_block(page))

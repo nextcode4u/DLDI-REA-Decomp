@@ -1,4 +1,7 @@
 #include "raw_nand.h"
+#ifdef RAW_NAND_BANNER
+#include "banner_plan.h"
+#endif
 
 static u32 sector_count;
 static u32 pages_per_block;
@@ -88,6 +91,9 @@ bool nrio_raw_read(u32 sector, u32 count, void *buffer)
         info->sectors = sector_count;
 #ifdef RAW_NAND_WRITE
         info->workspace_bytes = pages_per_block * PAGE_RECORD_SIZE;
+#ifdef RAW_NAND_BANNER
+        if (!banner_is_armed()) info->workspace_bytes = 0;
+#endif
 #else
         info->workspace_bytes = 0;
 #endif
@@ -102,6 +108,9 @@ bool nrio_raw_read(u32 sector, u32 count, void *buffer)
     }
     if (sector == NRIO_RAW_WORKSPACE_LBA && count >= pages_per_block * PAGE_RECORD_SIZE &&
         (u32)buffer % 4 == 0) {
+#ifdef RAW_NAND_BANNER
+        if (!banner_is_armed()) return false;
+#endif
         workspace = buffer;
         return true;
     }
@@ -145,6 +154,11 @@ bool nrio_raw_write(u32 sector, u32 count, const void *buffer)
 #ifdef RAW_NAND_PROTECT_BOOT
     // Erasing to update any page of block zero would also erase the boot pages.
     if (count && sector < pages_per_block * SECTORS_PER_PAGE) {
+        return false;
+    }
+#endif
+#ifdef RAW_NAND_BANNER
+    if (!banner_is_armed() || sector != BANNER_LBA || count != SECTORS_PER_PAGE) {
         return false;
     }
 #endif

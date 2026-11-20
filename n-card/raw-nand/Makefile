@@ -27,7 +27,7 @@ CPPFLAGS := -DARM9 -isystem "$(call tool_path,$(DEVKITPRO)/libnds/include)" \
 GCC_SEARCH := -B"$(call tool_path,$(GCC_LIBEXEC))/" -B"$(call tool_path,$(DEVKITARM)/bin)/"
 
 .PHONY: all clean
-all: $(BUILD)/nrio-raw-readonly.dldi $(BUILD)/nrio-raw-recovery.dldi $(BUILD)/nrio-raw-spare-readonly.dldi $(BUILD)/nrio-raw-spare-write.dldi $(BUILD)/nrio-raw-protected.dldi
+all: $(BUILD)/nrio-raw-readonly.dldi $(BUILD)/nrio-raw-recovery.dldi $(BUILD)/nrio-raw-spare-readonly.dldi $(BUILD)/nrio-raw-spare-write.dldi $(BUILD)/nrio-raw-protected.dldi $(BUILD)/nrio-raw-banner.dldi
 
 $(BUILD)/read-only/%.o: source/%.c Makefile
 	@mkdir -p "$(@D)"
@@ -58,6 +58,15 @@ $(BUILD)/protected/header.o: source/header.S Makefile
 	@mkdir -p "$(@D)"
 	"$(AS)" --defsym RAW_NAND_WRITE=1 --defsym RAW_NAND_PROTECT_BOOT=1 "$<" -o "$@"
 
+$(BUILD)/banner/%.o: source/%.c Makefile
+	@mkdir -p "$(@D)"
+	"$(CC)" $(GCC_SEARCH) $(CPPFLAGS) $(CFLAGS) -DRAW_NAND_WRITE -DRAW_NAND_BANNER -MMD -MP -S "$<" -o "$(@:.o=.s)"
+	"$(AS)" "$(@:.o=.s)" -o "$@"
+
+$(BUILD)/banner/header.o: source/header.S Makefile
+	@mkdir -p "$(@D)"
+	"$(AS)" --defsym RAW_NAND_WRITE=1 --defsym RAW_NAND_BANNER=1 "$<" -o "$@"
+
 $(BUILD)/read-only/header.o: source/header.S Makefile
 	@mkdir -p "$(@D)"
 	"$(AS)" "$<" -o "$@"
@@ -81,6 +90,11 @@ RECOVERY_OBJECTS := $(addprefix $(BUILD)/recovery/,header.o interface.o nand.o r
 
 PROTECTED_OBJECTS := $(addprefix $(BUILD)/protected/,header.o interface.o) $(addprefix $(BUILD)/recovery/,nand.o restore.o)
 
+BANNER_OBJECTS := $(addprefix $(BUILD)/banner/,header.o interface.o restore.o) $(BUILD)/recovery/nand.o
+
+$(BUILD)/nrio-raw-banner.elf: $(BANNER_OBJECTS) linker.ld
+	"$(LD)" -T linker.ld -o "$@" $(BANNER_OBJECTS)
+
 $(BUILD)/nrio-raw-protected.elf: $(PROTECTED_OBJECTS) linker.ld
 	"$(LD)" -T linker.ld -o "$@" $(PROTECTED_OBJECTS)
 
@@ -102,4 +116,4 @@ $(BUILD)/%.dldi: $(BUILD)/%.elf
 clean:
 	rm -rf "$(BUILD)"
 
--include $(READ_ONLY_OBJECTS:.o=.d) $(RECOVERY_OBJECTS:.o=.d) $(SPARE_OBJECTS:.o=.d) $(SPARE_WRITE_OBJECTS:.o=.d) $(PROTECTED_OBJECTS:.o=.d)
+-include $(READ_ONLY_OBJECTS:.o=.d) $(RECOVERY_OBJECTS:.o=.d) $(SPARE_OBJECTS:.o=.d) $(SPARE_WRITE_OBJECTS:.o=.d) $(PROTECTED_OBJECTS:.o=.d) $(BANNER_OBJECTS:.o=.d)

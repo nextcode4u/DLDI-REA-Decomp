@@ -11,7 +11,11 @@ nrio_raw_header:
 .ifdef RAW_NAND_PROTECT_BOOT
     .asciz "N-Card Guarded"
 .else
+.ifdef RAW_NAND_BANNER
+    .asciz "N-Card Banner"
+.else
     .asciz "N-Card Raw R/W"
+.endif
 .endif
 .endif
 .else

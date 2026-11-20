@@ -3,6 +3,8 @@
 import struct
 from pathlib import Path
 
+from arm_banner import arm
+
 from unicorn import Uc, UC_ARCH_ARM, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE, UC_MODE_ARM
 from unicorn.arm_const import (
     UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_SP,
@@ -289,6 +291,49 @@ def check_protected(image, nand_id):
     assert device.record(device.pages_per_block)[:512] == payload[:512]
 
 
+def check_banner_variant(template, nand_id):
+    device = Flash(template, nand_id)
+    assert device.run(0)
+    assert device.run(2, 0xffffffff, 0, RAM)
+    assert struct.unpack_from('<I', device.vm.mem_read(RAM, 16), 8)[0] == 0
+    assert not device.run(2, 0xfffffffe, device.pages_per_block * PAGE_BYTES, RAM + 0x10000)
+    assert not device.run(3, 16, 4, RAM)
+    assert not device.erased_blocks
+
+    original_spare = bytes([0xbb]) + bytes(range(1, 64))
+    snapshot = original_spare * 8
+    new_main = b'\x31' * 2048
+    new_spare = bytes(range(63, -1, -1))
+    image = arm(template, snapshot, new_main, new_spare)
+    device = recovery_device(image, nand_id)
+    device.vm.mem_write(RAM, new_main)
+    for page in range(8):
+        device.flash[page] = bytes([page]) * 2048 + original_spare
+    device.flash[8] = b'\x60' * 2112
+    for lba, count in ((0, 4), (15, 4), (16, 1), (16, 5), (17, 4), (256, 4)):
+        assert not device.run(3, lba, count, RAM)
+    device.vm.mem_write(RAM, b'\x40' * 2048)
+    assert not device.run(3, 16, 4, RAM)
+    assert not device.erased_blocks and not device.programmed_rows
+
+    device.vm.mem_write(RAM, new_main)
+    assert device.run(3, 16, 4, RAM)
+    assert device.erased_blocks == [0]
+    assert device.record(4) == new_main + new_spare
+    for page in (0, 1, 2, 3, 5, 6, 7):
+        assert device.record(page) == bytes([page]) * 2048 + original_spare
+    assert device.record(8) == b'\x60' * 2112
+
+    device = recovery_device(image, nand_id)
+    for page in range(8):
+        device.flash[page] = b'\xff' * 2048 + original_spare
+    device.flash[1] = device.record(1)[:-1] + b'\xff'
+    device.vm.mem_write(RAM, new_main)
+    assert not device.run(3, 16, 4, RAM)
+    assert write_error(device) == (2, 1, 0xbb)
+    assert not device.erased_blocks and not device.programmed_rows
+
+
 if __name__ == '__main__':
     path = Path(__file__).resolve().parent / 'compiled'
     writable_path = path / 'write-enabled'
@@ -320,3 +365,8 @@ if __name__ == '__main__':
     for chip in (0x1500d3ec, 0x3500d3ec):
         check_protected(protected, chip)
     print('protected: block zero and crossing writes rejected, first unprotected block writable')
+
+    banner = (writable_path / 'banner-only' / 'nrio-raw-banner.nds').read_bytes()
+    for chip in (0x1500d3ec, 0x3500d3ec):
+        check_banner_variant(banner, chip)
+    print('banner: unarmed, wrong request and spare mismatch refused; authorized page replaced')
