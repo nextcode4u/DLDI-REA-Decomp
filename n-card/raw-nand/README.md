@@ -53,3 +53,9 @@ HxD also showed the spare-area device with 131,072 sectors (64 MiB). At spare-du
 Apache Thunder used the writable spare-area USB build to copy USB sector 0 from a working N-Card to the damaged card. In this view, sector 0 is the 512-byte group of spare records for physical NAND pages 0–7. The recovery driver rewrites the affected erase block while preserving the staged main data.
 
 After the spare write, Apache Thunder reported that **Blowfish initialization and the banner worked again**. A subsequent launch still stopped at a white screen. Apache Thunder planned to inspect the main area for remaining differences. The test involved all eight spare records, so it does not identify the specific page or byte range responsible for the fix.
+
+### Full boot restored on the ExpressCard
+
+After the spare-sector 0 repair restored Blowfish initialization and the banner, the card still stopped at a white screen. Apache Thunder then ran a custom uDisk updater targeting the block table at `0x8000`. Their updater also has a variant for the table at `0x40000`. The `0x8000` update restored full boot on this ExpressCard.
+
+Apache Thunder also reported an earlier “device not ready” error while attempting a separate banner change. The cause of that error and the result of the banner change remain unconfirmed. The `0x8000` result applies to the tested card and updater.
