@@ -1,0 +1,65 @@
+.DEFAULT_GOAL := all
+.DELETE_ON_ERROR:
+
+DEVKITARM := $(DEVKITPRO)/devkitARM
+GCC_LIBEXEC := $(DEVKITARM)/libexec/gcc/arm-eabi/4.1.1
+
+ifeq ($(wildcard $(DEVKITARM)/bin/arm-eabi-gcc.exe),)
+EXE :=
+else
+EXE := .exe
+ifneq ($(shell command -v wslpath),)
+tool_path = $(shell wslpath -m "$(1)")
+endif
+endif
+tool_path ?= $(1)
+
+CC := $(DEVKITARM)/bin/arm-eabi-gcc$(EXE)
+AS := $(DEVKITARM)/bin/arm-eabi-as$(EXE)
+LD := $(DEVKITARM)/bin/arm-eabi-ld$(EXE)
+OBJCOPY := $(DEVKITARM)/bin/arm-eabi-objcopy$(EXE)
+
+BUILD := build
+CFLAGS := -march=armv4t -marm -mthumb-interwork -Os -std=gnu99 -Wall -Wextra \
+          -ffreestanding -fomit-frame-pointer -fPIC
+CPPFLAGS := -DARM9 -isystem "$(call tool_path,$(DEVKITPRO)/libnds/include)" \
+            -isystem "$(call tool_path,$(DEVKITARM)/arm-eabi/include)"
+GCC_SEARCH := -B"$(call tool_path,$(GCC_LIBEXEC))/" -B"$(call tool_path,$(DEVKITARM)/bin)/"
+
+.PHONY: all clean
+all: $(BUILD)/nrio-raw-readonly.dldi $(BUILD)/nrio-raw-recovery.dldi
+
+$(BUILD)/read-only/%.o: source/%.c Makefile
+	@mkdir -p "$(@D)"
+	"$(CC)" $(GCC_SEARCH) $(CPPFLAGS) $(CFLAGS) -MMD -MP -S "$<" -o "$(@:.o=.s)"
+	"$(AS)" "$(@:.o=.s)" -o "$@"
+
+$(BUILD)/recovery/%.o: source/%.c Makefile
+	@mkdir -p "$(@D)"
+	"$(CC)" $(GCC_SEARCH) $(CPPFLAGS) $(CFLAGS) -DRAW_NAND_WRITE -MMD -MP -S "$<" -o "$(@:.o=.s)"
+	"$(AS)" "$(@:.o=.s)" -o "$@"
+
+$(BUILD)/read-only/header.o: source/header.S Makefile
+	@mkdir -p "$(@D)"
+	"$(AS)" "$<" -o "$@"
+
+$(BUILD)/recovery/header.o: source/header.S Makefile
+	@mkdir -p "$(@D)"
+	"$(AS)" --defsym RAW_NAND_WRITE=1 "$<" -o "$@"
+
+READ_ONLY_OBJECTS := $(addprefix $(BUILD)/read-only/,header.o interface.o nand.o)
+RECOVERY_OBJECTS := $(addprefix $(BUILD)/recovery/,header.o interface.o nand.o restore.o)
+
+$(BUILD)/nrio-raw-readonly.elf: $(READ_ONLY_OBJECTS) linker.ld
+	"$(LD)" -T linker.ld -o "$@" $(READ_ONLY_OBJECTS)
+
+$(BUILD)/nrio-raw-recovery.elf: $(RECOVERY_OBJECTS) linker.ld
+	"$(LD)" -T linker.ld -o "$@" $(RECOVERY_OBJECTS)
+
+$(BUILD)/%.dldi: $(BUILD)/%.elf
+	"$(OBJCOPY)" -O binary "$<" "$@"
+
+clean:
+	rm -rf "$(BUILD)"
+
+-include $(READ_ONLY_OBJECTS:.o=.d) $(RECOVERY_OBJECTS:.o=.d)

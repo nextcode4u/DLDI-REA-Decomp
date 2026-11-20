@@ -38,6 +38,10 @@ The checks compare function results, driver state, buffer writes, and Slot-1 tra
 
 Apache Thunder tested the C build on a physical N-Card using GodMode9i. It mounted the card, deleted the benchmark's pad file, and copied a file between folders successfully. The benchmark reported about 4.2 MB/s for sequential and random 2 MiB reads. Its write test stalled with both the C build and the stock driver. [Hardware test notes](compiled-from-c/README.md#hardware-test)
 
+## Physical NAND recovery
+
+The [raw NAND recovery build](raw-nand/) starts at physical sector 0 and bypasses the flash translation layer. The folder includes read-only and write-enabled DLDI and USB app builds.
+
 ## Source tree
 
 | Directory | Contents |
