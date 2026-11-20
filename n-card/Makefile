@@ -46,6 +46,8 @@ ifeq ($(C_ONLY),1)
 BUILD := build/c-only
 ASM_SOURCES := source/dldi/header.S source/system/data.S
 $(BUILD)/ftl/block_tables.o: CPPFLAGS += -DNRIO_C_ONLY
+# Keep the page dispatcher's separate address loads for each switch case.
+$(BUILD)/nand/page_ops.o: CFLAGS += -fno-gcse
 else
 BUILD := build
 C_SOURCES := $(filter-out $(C_RECONSTRUCTION),$(C_SOURCES))

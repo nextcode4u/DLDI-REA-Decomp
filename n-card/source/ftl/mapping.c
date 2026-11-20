@@ -222,56 +222,41 @@ scan_new_zone:
     return;
 }
 
+/* A new request sets the logical address. Sequential reads advance the cursor.
+ * The labels preserve the original branch layout under GCC 4.1.1.
+ */
 NRIO_ROUTINE(3874) u32 nrio_read_sector_with_ecc_mapping(void)
 {
-    if (nrio_new_sector_request != 0) {
-        u32 sector = nrio_current_sector + nrio_sector_base;
-        u32 page = sector >> 2;
-        nrio_logical_block_index = page >> nrio_sectors_per_block_shift;
-        nrio_sector_in_current_page = sector & 3;
-        nrio_page_in_current_block = page & nrio_page_in_block_mask;
-        nrio_block_in_current_zone = nrio_logical_block_index % 62;
-        nrio_zone_index = nrio_logical_block_index / 62;
-        if (nrio_current_zone != nrio_zone_index) {
-            nrio_current_zone = nrio_zone_index;
-            nrio_load_zone();
-        }
-    } else {
-        if (nrio_sector_in_current_page != 0) {
-            goto read_sector;
-        }
-
-        nrio_page_in_current_block = (nrio_page_in_current_block + 1) & nrio_page_in_block_mask;
-        if (nrio_page_in_current_block == 0) {
-            nrio_block_in_current_zone = (u8)(nrio_block_in_current_zone + 1) % 62;
-            if (nrio_block_in_current_zone == 0) {
-                nrio_current_zone++;
-                nrio_load_zone();
-            }
-        }
-    }
-    if (nrio_sector_in_current_page != 0 && nrio_new_sector_request == 0) {
-        goto read_sector;
+    if (nrio_new_sector_request == 0) {
+        goto advance;
     }
 
+    u32 sector = nrio_current_sector + nrio_sector_base;
+    u32 page = sector >> 2;
+    nrio_sector_in_current_page = sector & 3;
+    nrio_page_in_current_block = page & nrio_page_in_block_mask;
+    nrio_logical_block_index = page >> nrio_sectors_per_block_shift;
+    nrio_block_in_current_zone = nrio_logical_block_index % 62;
+    nrio_zone_index = nrio_logical_block_index / 62;
+    if (nrio_current_zone != nrio_zone_index) {
+        nrio_current_zone = nrio_zone_index;
+        nrio_load_zone();
+    }
+
+check_page:
+    if (nrio_sector_in_current_page != 0) {
+        goto check_request;
+    }
+
+map_page:
     nrio_physical_block_cursor = nrio_logical_block_map[nrio_block_in_current_zone];
     if (nrio_pending_logical_block == nrio_block_in_current_zone) {
-        if (nrio_page_in_current_block < nrio_pending_page_count) {
-            nrio_select_physical_page(nrio_pending_physical_block, nrio_page_in_current_block);
-            goto load_spare;
-        }
-        if (nrio_old_physical_block == 0xff) {
-            goto use_free_block;
-        }
-        nrio_select_physical_page(nrio_old_physical_block, nrio_page_in_current_block);
-    } else {
-        if (nrio_physical_block_cursor == 0xff) {
-        use_free_block:
-            nrio_select_physical_page(nrio_find_free_block(), 0);
-        } else {
-            nrio_select_physical_page(nrio_physical_block_cursor, nrio_page_in_current_block);
-        }
+        goto pending;
     }
+    if (__builtin_expect(nrio_physical_block_cursor == 0xff, 0)) {
+        goto use_free_block;
+    }
+    nrio_select_physical_page(nrio_physical_block_cursor, nrio_page_in_current_block);
 load_spare:
     nrio_page_operation(1);
     nrio_check_spare_markers();
@@ -282,4 +267,43 @@ read_sector:
     nrio_sector_in_current_page = (nrio_sector_in_current_page + 1) & 3;
     nrio_page_operation(2);
     return 0;
+
+advance:
+    if (nrio_sector_in_current_page != 0) {
+        goto read_sector;
+    }
+    nrio_page_in_current_block = (nrio_page_in_current_block + 1) & nrio_page_in_block_mask;
+    if (nrio_page_in_current_block == 0) {
+        goto advance_block;
+    }
+    goto map_page;
+check_request:
+    if (nrio_new_sector_request != 0) {
+        goto map_page;
+    }
+    goto read_sector;
+
+pending:
+    if (__builtin_expect(nrio_page_in_current_block < nrio_pending_page_count, 0)) {
+        goto new_block;
+    }
+    if (__builtin_expect(nrio_old_physical_block == 0xff, 0)) {
+        goto use_free_block;
+    }
+    nrio_select_physical_page(nrio_old_physical_block, nrio_page_in_current_block);
+    goto load_spare;
+advance_block:
+    nrio_block_in_current_zone = (u8)(nrio_block_in_current_zone + 1) % 62;
+    if (__builtin_expect(nrio_block_in_current_zone != 0, 0)) {
+        goto map_page;
+    }
+    nrio_current_zone++;
+    nrio_load_zone();
+    goto check_page;
+use_free_block:
+    nrio_select_physical_page(nrio_find_free_block(), 0);
+    goto load_spare;
+new_block:
+    nrio_select_physical_page(nrio_pending_physical_block, nrio_page_in_current_block);
+    goto load_spare;
 }

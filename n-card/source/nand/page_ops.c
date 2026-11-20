@@ -27,25 +27,20 @@ enum {
     NRIO_PAGE_READ_RAW_SECTOR = 11,
 };
 
+/* The translation layer reads this same page buffer as 16-bit metadata. */
+typedef u32 NandPageWord __attribute__((may_alias));
+
 NRIO_ROUTINE(195c) void nrio_page_operation(u32 operation)
 {
     u8 ecc[4];
-    u8 *page_buffer = (u8 *)nrio_page_buffer;
 
+    /* Case order reproduces the original dispatcher layout under GCC 4.1.1. */
     switch (operation) {
-    case NRIO_PAGE_READ_SPARE:
-    case NRIO_PAGE_READ_PAGE_MARKER:
-        nrio_read_nand_spare((u32 *)nrio_spare);
-        break;
-    case NRIO_PAGE_READ_SECTOR_ECC:
-        nrio_read_nand_sector_with_ecc(nrio_read_buffer, nrio_sector_in_page, ecc);
-        nrio_correct_ecc(&nrio_spare[nrio_sector_in_page * 16 + 8], ecc, nrio_read_buffer);
-        break;
     case NRIO_PAGE_STAGE_SECTOR:
-        nrio_read_nand_sector_with_ecc(page_buffer + nrio_sector_in_page * 512, nrio_sector_in_page,
-                                       ecc);
+        nrio_read_nand_sector_with_ecc((u8 *)nrio_page_buffer + nrio_sector_in_page * 512,
+                                      nrio_sector_in_page, ecc);
         nrio_correct_ecc(&nrio_spare[nrio_sector_in_page * 16 + 8], ecc,
-                         page_buffer + nrio_sector_in_page * 512);
+                         (u8 *)nrio_page_buffer + nrio_sector_in_page * 512);
         break;
     case NRIO_PAGE_PROGRAM_SPARE:
         for (u32 offset = 0; offset != 64; offset += 16) {
@@ -60,7 +55,7 @@ NRIO_ROUTINE(195c) void nrio_page_operation(u32 operation)
                                         &nrio_spare[nrio_sector_in_page * 16 + 8]);
         break;
     case NRIO_PAGE_RESTORE_SECTOR:
-        nrio_write_nand_sector_with_ecc(page_buffer + nrio_sector_in_page * 512,
+        nrio_write_nand_sector_with_ecc((u8 *)nrio_page_buffer + nrio_sector_in_page * 512,
                                         nrio_sector_in_page,
                                         &nrio_spare[nrio_sector_in_page * 16 + 8]);
         break;
@@ -68,7 +63,8 @@ NRIO_ROUTINE(195c) void nrio_page_operation(u32 operation)
         nrio_erase_nand_block();
         break;
     case NRIO_PAGE_WRITE_MARKER_PAGE:
-        for (u32 *word = (u32 *)page_buffer; word < (u32 *)(page_buffer + 512); ++word) {
+        for (NandPageWord *word = (NandPageWord *)nrio_page_buffer;
+             word < (NandPageWord *)((u8 *)nrio_page_buffer + 512); ++word) {
             *word = 0xffffffff;
         }
         for (u32 offset = 0; offset != 64; offset += 16) {
@@ -82,22 +78,33 @@ NRIO_ROUTINE(195c) void nrio_page_operation(u32 operation)
             nrio_spare[offset | 14] = 0xff;
             nrio_spare[offset | 6] = 0xff;
         }
-        nrio_write_nand_sector_raw(page_buffer, 0);
-        nrio_write_nand_sector_raw(page_buffer, 1);
-        nrio_write_nand_sector_raw(page_buffer, 2);
-        nrio_write_nand_sector_raw(page_buffer, 3);
+        nrio_write_nand_sector_raw((u8 *)nrio_page_buffer, 0);
+        nrio_write_nand_sector_raw((u8 *)nrio_page_buffer, 1);
+        nrio_write_nand_sector_raw((u8 *)nrio_page_buffer, 2);
+        nrio_write_nand_sector_raw((u8 *)nrio_page_buffer, 3);
         nrio_finish_nand_write((const u32 *)nrio_spare);
+        break;
+    case NRIO_PAGE_READ_SPARE:
+    case NRIO_PAGE_READ_PAGE_MARKER:
+        nrio_read_nand_spare((u32 *)nrio_spare);
+        break;
+    case NRIO_PAGE_READ_RAW_SECTOR:
+        nrio_read_nand_sector((u32 *)nrio_read_buffer, nrio_sector_in_page);
+        break;
+    case NRIO_PAGE_READ_SECTOR_ECC:
+        nrio_read_nand_sector_with_ecc(nrio_read_buffer, nrio_sector_in_page, ecc);
+        nrio_correct_ecc(&nrio_spare[nrio_sector_in_page * 16 + 8], ecc, nrio_read_buffer);
         break;
     case NRIO_PAGE_PAD_SECTOR: {
         u32 sector = nrio_sector_in_page;
-        u32 *word = (u32 *)(page_buffer + sector * 512);
-        u32 *end = (u32 *)(page_buffer + sector * 512 + 512);
+        NandPageWord *word = (NandPageWord *)((u8 *)nrio_page_buffer + sector * 512);
+        NandPageWord *end = (NandPageWord *)((u8 *)nrio_page_buffer + 512 + sector * 512);
         for (; word < end; ++word) {
             *word = 0xffffffff;
         }
-        nrio_write_nand_sector_raw(page_buffer + nrio_sector_in_page * 512, nrio_sector_in_page);
+        nrio_write_nand_sector_raw((u8 *)nrio_page_buffer + nrio_sector_in_page * 512,
+                                   nrio_sector_in_page);
         u8 *spare = nrio_spare + nrio_sector_in_page * 16;
-        spare[6] = 0xff;
         spare[8] = 0xff;
         spare[12] = 0xff;
         spare[4] = 0xff;
@@ -106,11 +113,9 @@ NRIO_ROUTINE(195c) void nrio_page_operation(u32 operation)
         spare[5] = 0xff;
         spare[10] = 0xff;
         spare[14] = 0xff;
+        spare[6] = 0xff;
         break;
     }
-    case NRIO_PAGE_READ_RAW_SECTOR:
-        nrio_read_nand_sector((u32 *)nrio_read_buffer, nrio_sector_in_page);
-        break;
     }
 }
 
