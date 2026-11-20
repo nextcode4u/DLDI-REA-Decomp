@@ -1,7 +1,8 @@
 #include "../nrio.h"
 
-NRIO_ROUTINE(13c4) void nrio_require_word_alignment(u32 address)
+NRIO_ROUTINE(13c4) void nrio_require_word_alignment(u32 address, const char *message)
 {
+    (void)message;
     if ((address & 3) != 0) {
         for (;;) {
         }

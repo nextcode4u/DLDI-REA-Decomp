@@ -36,5 +36,10 @@ SECTIONS {
         *(COMMON)
         __bss_end = .;
     } :driver
+    __got_relative_mftl_sectors = ABSOLUTE(mftl_sectors - nrio_got);
+    __got_relative_mftl_spare = ABSOLUTE(mftl_spare - nrio_got);
+    __got_relative_mftl_blocktab = ABSOLUTE(mftl_blocktab - nrio_got);
+    __got_relative_mftl_freetab = ABSOLUTE(mftl_freetab - nrio_got);
+    __got_relative_mftl_freeptr = ABSOLUTE(mftl_freeptr - nrio_got);
     /DISCARD/ : { *(.note.GNU-stack) *(.comment) *(.ARM.exidx*) *(.ARM.extab*) }
 }

@@ -2,7 +2,7 @@
 
 Matching decompilation projects for Nintendo DS DLDI drivers. Each driver has its own directory.
 
-- [N-Card NRIO](n-card/) reproduces XuluMenu's `nrio.dldi` byte for byte. The C reconstruction is in progress.
+- [N-Card NRIO](n-card/) reproduces XuluMenu's `nrio.dldi` byte for byte. All 60 driver routines are implemented in C. Byte-for-byte matching of the all-C build is in progress.
 
 ## Developer note
 

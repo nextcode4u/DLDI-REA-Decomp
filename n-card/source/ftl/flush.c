@@ -1,7 +1,7 @@
 #include "state.h"
 
 extern u32 nrio_retry_block_erase(u32 block);
-extern u8 nrio_copy_nand_pages(u8 source, u8 destination, u8 first_page, u8 end_page);
+extern u32 nrio_copy_nand_pages(u8 source, u8 destination, u8 first_page, u8 end_page);
 extern unsigned nrio_write_page_marker(u32 page);
 extern u8 nrio_allocate_free_block(void);
 extern u8 nrio_find_free_block(void);

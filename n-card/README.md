@@ -1,6 +1,6 @@
 # NRIO DLDI reconstruction
 
-The standalone build matches all 19,724 bytes of XuluMenu's `nrio.dldi`. It covers the DLDI interface, Slot-1 command transport, NAND access, and flash translation layer. The working source currently contains 50 recovered C routines and 10 ARM assembly routines. The bulk transfers with ECC generation and most of the translation layer still use assembly. The devkitARM startup and unsigned division code are linked from the historical toolchain. [Pinned XuluMenu reference](https://github.com/ApacheThunder/XuluMenu/blob/7ceabcbc9331f84a8c4fcde38b6f60193405ee8a/nrio.dldi)
+The standalone build matches all 19,724 bytes of XuluMenu's `nrio.dldi`. It covers the DLDI interface, Slot-1 command transport, NAND access, and flash translation layer. The matching build compiles 50 routines from C and assembles the remaining 10. The all-C build compiles all 60 driver routines from C, including the bulk transfers with ECC generation and the translation layer. Its binary still differs from the reference. The devkitARM startup and unsigned division code are linked from the historical toolchain. [Pinned XuluMenu reference](https://github.com/ApacheThunder/XuluMenu/blob/7ceabcbc9331f84a8c4fcde38b6f60193405ee8a/nrio.dldi)
 
 ## Build and compare
 
@@ -18,6 +18,22 @@ Expected SHA-256
 ```text
 716937fa83dda22df3b27bf2c08ce9ea9a0209c6d64498a83b527c0dddae8978
 ```
+
+## All-C build
+
+```sh
+make DEVKITPRO=/path/to/r20-sdk C_ONLY=1
+```
+
+The all-C output is `build/c-only/nrio.dldi`. It is 19,988 bytes. Both builds use the DLDI header, data tables, and historical compiler runtime.
+
+To compare the C implementations with the matching binary, build both configurations and run the ARM926 differential checks with Python and Unicorn 2.1.4 installed.
+
+```sh
+python3 scripts/check_c_behavior.py
+```
+
+The checks compare function results, driver state, buffer writes, and Slot-1 traffic with scripted NAND I/O. They cover 416 scenarios each at the original and relocated load addresses, including the public startup, read, and write entry points. Hardware testing and byte-for-byte verification of the all-C output remain open.
 
 ## Source tree
 

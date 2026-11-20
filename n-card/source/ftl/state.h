@@ -33,4 +33,40 @@ extern u32 nrio_cached_logical_page;
 
 extern u8 *nrio_read_buffer;
 
+extern u16 nrio_block_count;
+extern u8 nrio_zero_pending_logical;
+extern u8 nrio_physical_block_cursor;
+extern u8 nrio_first_cache_free[64];
+extern u32 nrio_logical_block_index;
+extern u8 nrio_second_pending_logical;
+extern u16 nrio_first_cached_zone;
+extern u8 nrio_first_pending_logical;
+extern u16 nrio_zone_count;
+extern u8 nrio_second_cache_mapping[64];
+extern u8 nrio_zero_pending_pages;
+extern u8 nrio_first_old_physical;
+extern u8 nrio_initialize_zone_zero;
+extern u32 nrio_first_cache_physical[64];
+extern u8 nrio_nonzero_zone_active;
+extern u8 nrio_sector_in_current_page;
+extern u16 nrio_zone_index;
+extern u32 nrio_zone_zero_physical[64];
+extern u8 nrio_second_pending_pages;
+extern u8 nrio_zero_pending_physical;
+extern u32 nrio_second_cache_physical[64];
+extern u8 nrio_second_old_physical;
+extern u8 nrio_block_in_current_zone;
+extern u8 nrio_second_cache_free[64];
+extern u8 nrio_first_cache_mapping[64];
+extern u8 nrio_page_in_current_block;
+extern u16 nrio_second_cached_zone;
+extern u8 nrio_second_pending_physical;
+extern u8 nrio_zone_zero_mapping[64];
+extern u8 nrio_zero_old_physical;
+extern u8 nrio_zone_zero_free[64];
+extern u8 nrio_sectors_per_block_shift;
+extern u8 nrio_first_pending_pages;
+extern u8 nrio_second_cache_active;
+extern u8 nrio_first_pending_physical;
+
 #endif

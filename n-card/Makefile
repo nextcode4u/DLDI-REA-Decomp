@@ -36,11 +36,22 @@ CPPFLAGS += -DARM9 -isystem "$(call tool_path,$(LIBNDS)/include)"
 CFLAGS += $(ARCH) -std=gnu99 -O2 -Wall -ffreestanding -fomit-frame-pointer -fPIC
 ASFLAGS += -mcpu=arm946e-s
 
-BUILD := build
 SRC_DIRS := source/dldi source/card source/nand source/ftl source/system
 C_SOURCES := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c))
 ASM_SOURCES := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.S))
-OBJECTS := $(C_SOURCES:source/%.c=$(BUILD)/%.o) $(ASM_SOURCES:source/%.S=$(BUILD)/%.o)
+C_RECONSTRUCTION := source/card/nand_transfer.c source/nand/page_ops.c \
+                    source/ftl/block_tables.c source/ftl/mapping.c source/ftl/write.c
+
+ifeq ($(C_ONLY),1)
+BUILD := build/c-only
+ASM_SOURCES := source/dldi/header.S source/system/data.S
+else
+BUILD := build
+C_SOURCES := $(filter-out $(C_RECONSTRUCTION),$(C_SOURCES))
+endif
+C_OBJECTS := $(C_SOURCES:source/%.c=$(BUILD)/%.o)
+ASM_OBJECTS := $(ASM_SOURCES:source/%.S=$(BUILD)/%.o)
+OBJECTS := $(C_OBJECTS) $(ASM_OBJECTS)
 START_FILES := $(call tool_path,$(GCC_LIBDIR)/crti.o) $(call tool_path,$(GCC_LIBDIR)/crtbegin.o)
 END_FILES := $(call tool_path,$(GCC_LIBDIR)/crtend.o) $(call tool_path,$(GCC_LIBDIR)/crtn.o)
 
@@ -50,14 +61,14 @@ all: $(BUILD)/nrio.dldi
 # These routines call only ARM code. GCC can then emit a direct tail branch.
 $(BUILD)/ftl/sector_read.o: CFLAGS += -mno-thumb-interwork
 
-$(BUILD)/%.o: source/%.c Makefile scripts/fix-got.sed
+$(C_OBJECTS): $(BUILD)/%.o: source/%.c Makefile scripts/fix-got.sed
 	@mkdir -p "$(@D)"
 	"$(CC)" $(GCC_SEARCH) $(CPPFLAGS) $(CFLAGS) -MMD -MP -MF "$(@:.o=.d)" \
 		-MT "$@" -S "$<" -o "$(@:.o=.gcc.s)"
 	sed -E -f scripts/fix-got.sed "$(@:.o=.gcc.s)" > "$(@:.o=.s)"
 	"$(AS)" $(ASFLAGS) "$(@:.o=.s)" -o "$@"
 
-$(BUILD)/%.o: source/%.S Makefile
+$(ASM_OBJECTS): $(BUILD)/%.o: source/%.S Makefile
 	@mkdir -p "$(@D)"
 	"$(AS)" $(ASFLAGS) "$<" -o "$@"
 
