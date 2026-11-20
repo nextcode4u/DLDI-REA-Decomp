@@ -21,3 +21,8 @@ The write still erases a boot-critical block. Loss of power or a hardware erase 
 ## Hardware result
 
 Apache Thunder used the banner-only build to replace the first banner on a working N-Card. The DS menu displayed the new banner and the card still booted fully. Apache reported two banner copies in the region starting at `0x2000`. Changing the first copy was sufficient on the tested card. The purpose of the second copy and its behavior on other firmware remain unverified.
+
+
+## Possible origin of the duplicate banner
+
+Apache Thunder recalls that early cards were sold as DSFlash2 and used a USB dongle to flash a single game before uDisk. In the layout he described, the tool wrote the game at `0x40000`, updated the block table at `0x8000` to point to it, and copied the game's banner into the region starting at `0x2000`. His hypothesis is that the tool wrote a fixed `0x1000`-byte banner region and duplicated the banner to fill it. That explanation remains unverified. The hardware test shows that updating the first copy was sufficient for the tested card.
