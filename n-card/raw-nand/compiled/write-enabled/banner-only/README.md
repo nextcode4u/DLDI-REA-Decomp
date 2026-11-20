@@ -2,25 +2,17 @@
 
 The [USB app template](nrio-raw-banner.nds) and [standalone DLDI template](nrio-raw-banner.dldi) ship unarmed. The USB app exposes the main NAND data read-only until you prepare a copy for a particular backup and replacement. Use the [read-only dump tools](../../../README.md) to save both the main and spare areas of the target before proceeding.
 
-Prepare three files:
+## Prepare from dumps
 
-| File | Required bytes |
-| --- | --- |
-| `target-first-eight.spare` | The target card's spare dump at `0x000–0x1FF`, exactly 512 bytes |
-| `banner.bin` | The new page 4 main data for `0x2000–0x27FF`, exactly 2,048 bytes |
-| `banner-page4.spare` | The intended page 4 spare record, exactly 64 bytes. In a spare-only dump this record is at `0x100–0x13F`. |
-
-Use a replacement main page and spare record verified to work together with the target boot layout. The tool uses the supplied spare bytes verbatim, including any ECC and boot metadata. The firmware's exact assignments within this record remain unconfirmed.
-
-Run the [arming tool](../../../arm_banner.py) with Python 3:
+The [arming tool](../../../arm_banner.py) extracts the required bytes directly from separate main and spare dumps. Use Python 3 and a donor whose banner main page and spare record are compatible with the target boot layout. Put the template beside the Python script if downloading the files individually.
 
 ```sh
-python3 arm_banner.py nrio-raw-banner.nds \
-  --target-spare target-first-eight.spare \
-  --banner-main banner.bin \
-  --banner-spare banner-page4.spare \
-  --output nrio-raw-banner-armed.nds
+python3 arm_banner.py from-dumps target-spare.bin donor-main.bin donor-spare.bin
 ```
+
+The command creates `banner-ready/nrio-raw-banner-armed.nds` and `banner-ready/banner.bin`. It reads the first 512 bytes from the target spare dump, 2,048 bytes at `0x2000` from the donor main dump, and 64 bytes at `0x100` from the donor spare dump. The driver uses those spare bytes verbatim, including ECC and boot metadata. The firmware's exact assignments within that record remain unconfirmed.
+
+For custom banner data you can still supply pre-extracted slices with `--target-spare` (512 bytes), `--banner-main` (2,048 bytes), and `--banner-spare` (64 bytes). Run `python3 arm_banner.py --help` for the command syntax.
 
 Boot the armed copy and submit `banner.bin` as one 2,048-byte USB write starting at byte offset `0x2000`. The DS rejects other ranges, sizes, or payloads. Before erasing, it compares all eight saved spare records against the target. It rewrites physical erase block 0 with the intended page 4 main and spare bytes, preserves the staged main and spare bytes of every other page, and verifies the entire block by reading it back.
 
