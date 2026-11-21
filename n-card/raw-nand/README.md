@@ -94,7 +94,9 @@ The updated write-enabled USB apps print a second error line. For example, `spar
 
 ### Second card recovery and custom banner
 
-Apache Thunder reported recovering a second N-Card. The DS menu photograph shows its custom icon and `DSGBA NAND CARD` banner. Apache suspected that the first hidden ROM's block table still needed repair. The uDisk section or its block table was also reported unresolved during testing. The report does not establish that the banner-only build wrote the banner in the photograph.
+Apache Thunder confirmed that the second N-Card recovered fully. The DS menu photograph from testing shows its custom icon and `DSGBA NAND CARD` banner. The source of that banner remains unconfirmed.
+
+For the main NAND repair, Apache started with a dump from a working N-Card and replaced the block table at `0x8000` with a copy of the table from `0x40000`. On this layout, the first table then points directly to normal uDisk, bypassing the original safe-mode ROM and its USB update screen. Apache made the edit because the safe-mode ROM failed during DSi boot on the tested setup. The exact failure mechanism remains unknown.
 
 ### Shared block and early NAND writes
 
@@ -108,7 +110,7 @@ For the follow-up test, Apache said they wrote a regular NAND image with its fir
 
 The bricked shared block then read entirely as `0xFF` in the spare-area view. HxD shows all bytes in spare-view USB sectors 0 and 1 (`0x000`–`0x3FF`) as `0xFF`, covering the spare records for physical NAND pages 0–15. The `0x68` edit was in the image Apache wrote. The `0xFF` bytes were observed in the separate spare-area readback. The full extent of the affected NAND region and the updater result for this trial remain unconfirmed.
 
-Apache planned to flash the corrected main NAND contents up to `0x80000` first, then restore the card's shared-block backup. The outcome of that restore is pending.
+For the third card, Apache planned to flash the corrected main NAND contents up to `0x80000` first, then restore that card's shared-block backup. Apache reported using this sequence for the successful second-card recovery. The result on the third card is pending.
 
 For a paired capture, use the [spare-area reader](compiled/nrio-raw-spare-readonly.nds) to save the same range before bricking, in the bricked state, and after the updater attempt. Compare the images in 64-byte records and record which page records changed, which updater and target offset were used, and whether the banner and uDisk boot worked at each stage. Intentionally clearing the shared block can leave the card unbootable.
 
