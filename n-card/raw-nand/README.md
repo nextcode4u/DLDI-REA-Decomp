@@ -17,7 +17,7 @@ The USB image contains all addressable main data, including boot and other norma
 
 ## Spare-area dump
 
-The spare-area USB build packs eight consecutive 64-byte spare records into each 512-byte USB sector. The first 64 bytes in the dump belong to NAND page 0. For page `n`, the record starts at offset `n * 64` in the spare dump and its corresponding main data starts at `n * 2048` in the main dump. A 2 GiB N-Card should expose **131,072 USB sectors (64 MiB)** in the spare-area build. The exposed records include ECC and other spare bytes as returned by the N-Card bridge. Their contents can be compared between a working card and the damaged card. For a programmer dump that interleaves 2,048 main bytes and 64 spare bytes per page, the spare record for page `n` starts at `n * 2112 + 2048`. Compare individual spare records at these offsets. The location of the missing boot data remains unconfirmed.
+The spare-area USB build packs eight consecutive 64-byte spare records into each 512-byte USB sector. The first 64 bytes in the dump belong to NAND page 0. For page `n`, the record starts at offset `n * 64` in the spare dump and its corresponding main data starts at `n * 2048` in the main dump. A 2 GiB N-Card should expose **131,072 USB sectors (64 MiB)** in the spare-area build. The exposed records include ECC and other spare bytes as returned by the N-Card bridge. Their contents can be compared between a working card and the damaged card. For a programmer dump that interleaves 2,048 main bytes and 64 spare bytes per page, the spare record for page `n` starts at `n * 2112 + 2048`. Compare individual spare records at these offsets. See the [ARM7 boot code finding](#arm7-boot-code-in-the-spare-area) for an example of boot data in these records.
 
 ## Spare recovery writes
 
@@ -133,6 +133,12 @@ Apache confirmed that the third card, the DS Linker, also recovered. They wrote 
 Between the main-area write and the shared-block restore, HxD showed non-`0xFF` bytes in the spare records for pages 0, 4, and 5. For example, page 0 shows `96 A9 56` at spare offsets `+4`, `+8`, and `+12`. This pattern matches the raw main-area driver's ECC layout. The driver regenerates those triplets for changed 512-byte sectors and carries the other staged spare bytes forward when it rewrites the erase block. Apache suspected that the uDisk updater clears more of the shared block. The updater's exact erase and rewrite behavior remains unverified. [Raw NAND write implementation](source/restore.c)
 
 For a paired capture, use the [spare-area reader](compiled/nrio-raw-spare-readonly.nds) to save the same range before bricking, in the bricked state, and after the updater attempt. Compare the images in 64-byte records and record which page records changed, which updater and target offset were used, and whether the banner and uDisk boot worked at each stage. Intentionally clearing the shared block can leave the card unbootable.
+
+### ARM7 boot code in the spare area
+
+On the working 16 Gbit N-Card before the block-table edit, page 0's spare record (`0x00`–`0x3F`) reads entirely as `0xFF`. Apache Thunder identified the next 64-byte record (`0x40`–`0x7F`, NAND page 1 spare) as the initial cartridge ROM's ARM7 code. The selected bytes in HxD match the saved DS Linker sample byte for byte. Both show copies at spare-dump offsets `0x100` and `0x140` (pages 4 and 5).
+
+The start of the record disassembles as little-endian ARM code. It loads `0x04000208` and writes zero there and eight bytes later, then polls a memory word and branches through an address read from memory. Which copy the cartridge uses at boot remains unverified.
 
 ### Banner-only write verified on hardware
 
