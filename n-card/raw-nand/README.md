@@ -140,6 +140,10 @@ On the working 16 Gbit N-Card before the block-table edit, page 0's spare record
 
 The start of the record disassembles as little-endian ARM code. It loads `0x04000208` and writes zero there and eight bytes later, then polls a memory word and branches through an address read from memory. Which copy the cartridge uses at boot remains unverified.
 
+### Blowfish data in the spare area
+
+Apache Thunder identified the highlighted bytes at `0xC0`–`0xFF` in `shared_dslinker.bin` as part of the missing Blowfish data. That 64-byte range is NAND page 3's spare record. In the saved dump, the final 56 bytes of that record (`0xC8`–`0xFF`) match the first 56 bytes of page 2's spare record (`0x80`–`0xB7`) byte for byte. The data therefore repeats across the page boundary. This places the candidate Blowfish data in the same spare-view USB sector whose restoration brought back Blowfish initialization on the ExpressCard. The exact boundaries of the Blowfish material and how the cartridge loads it remain unverified.
+
 ### Banner-only write verified on hardware
 
 Apache Thunder used the banner-only build on a working N-Card and confirmed that the DS displayed the new banner and the card continued to boot fully. The first banner copy changed. The second copy's role remains unverified. [Banner-only build and hardware notes](compiled/write-enabled/banner-only/#hardware-result)
