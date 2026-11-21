@@ -100,7 +100,7 @@ For the main NAND repair, Apache started with a dump from a working N-Card and r
 
 ### Shared block and early NAND writes
 
-Apache Thunder had to **deliberately put each card into a specific bricked state** before the custom uDisk updater could write to the region at main NAND offset `0x0000`. The goal was to restore the block table at `0x8000`. Apache confirmed that two N-Cards recovered fully. Apache observed that the area they called the **shared block** was mostly `0xFF` when the write succeeded. Why the updater could write in that state remains unknown.
+Apache Thunder had to **deliberately put each card into a specific bricked state** before writing to the region at main NAND offset `0x0000`. The goal was to restore the block table at `0x8000`. Apache observed that the area they called the **shared block** was mostly `0xFF` when the write succeeded. Why that state allowed writes remains unknown.
 
 Apache provided `shared_dslinker.bin` from a third, partially bricked DS Linker before attempting to reproduce that state. The file has 135 `0xFF` bytes out of 512, including the entire range `0x180`–`0x1FF`. It also contains three identical 64-byte records at file offsets `0x40`, `0x100`, and `0x140`. In the packed spare-area view, these positions correspond to identical spare records for NAND pages 1, 4, and 5 and all-`0xFF` records for pages 6 and 7 of USB sector 0.
 
@@ -108,9 +108,13 @@ SHA-256 of `shared_dslinker.bin` is `66cb7c14f47246135ea4c737831a03d5e91324f3b8d
 
 For the follow-up test, Apache said they wrote a regular NAND image with its first byte (image offset `0x0000`) changed to lowercase ASCII `h` (`0x68`). Apache made that change because nrioTool had returned incorrect dumps without it. The reason this byte affected the dump remains unknown. Apache identified the `MKR` markers appearing every `0x200` bytes in the screenshot as artifacts of extracting the hex data from the custom uDisk updater. Exclude those markers when interpreting the screenshot as raw NAND data.
 
-The bricked shared block then read entirely as `0xFF` in the spare-area view. HxD shows all bytes in spare-view USB sectors 0 and 1 (`0x000`–`0x3FF`) as `0xFF`, covering the spare records for physical NAND pages 0–15. The `0x68` edit was in the image Apache wrote. The `0xFF` bytes were observed in the separate spare-area readback. The full extent of the affected NAND region and the updater result for this trial remain unconfirmed.
+The bricked shared block then read entirely as `0xFF` in the spare-area view. HxD shows all bytes in spare-view USB sectors 0 and 1 (`0x000`–`0x3FF`) as `0xFF`, covering the spare records for physical NAND pages 0–15. The `0x68` edit was in the image Apache wrote. The `0xFF` bytes were observed in the separate spare-area readback. The full extent of the affected NAND region remains unconfirmed.
 
-For the third card, Apache planned to flash the corrected main NAND contents up to `0x80000` first, then restore that card's shared-block backup. Apache reported using this sequence for the successful second-card recovery. The result on the third card is pending.
+### Third card recovery and spare-area readback
+
+Apache confirmed that the third card, the DS Linker, also recovered. They wrote the corrected main NAND contents up to `0x80000` with the modified DLDI, then restored the original shared-block backup. Apache reported having to rerun the XuluMenu installer after each recovery and suspected that the uDisk section needed reflashing. The reason the reinstall was needed remains unconfirmed.
+
+Between the main-area write and the shared-block restore, HxD showed non-`0xFF` bytes in the spare records for pages 0, 4, and 5. For example, page 0 shows `96 A9 56` at spare offsets `+4`, `+8`, and `+12`. This pattern matches the raw main-area driver's ECC layout. The driver regenerates those triplets for changed 512-byte sectors and carries the other staged spare bytes forward when it rewrites the erase block. Apache suspected that the uDisk updater clears more of the shared block. The updater's exact erase and rewrite behavior remains unverified. [Raw NAND write implementation](source/restore.c)
 
 For a paired capture, use the [spare-area reader](compiled/nrio-raw-spare-readonly.nds) to save the same range before bricking, in the bricked state, and after the updater attempt. Compare the images in 64-byte records and record which page records changed, which updater and target offset were used, and whether the banner and uDisk boot worked at each stage. Intentionally clearing the shared block can leave the card unbootable.
 
