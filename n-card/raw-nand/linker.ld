@@ -27,5 +27,5 @@ SECTIONS {
     /DISCARD/ : { *(.comment .note.GNU-stack .ARM.exidx* .ARM.extab*) }
 
     ASSERT(SIZEOF(.header) == 128, "Invalid DLDI header size")
-    ASSERT(__bss_end - nrio_raw_header <= 8192, "Driver exceeds its DLDI allocation")
+    ASSERT(__bss_end - nrio_raw_header <= (nrio_raw_allocation), "Driver exceeds its DLDI allocation")
 }

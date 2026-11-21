@@ -1,6 +1,6 @@
 # Write-enabled N-Card recovery builds
 
-Use [nrio-raw-toolkit.nds](nrio-raw-toolkit.nds) and its [standalone DLDI](nrio-raw-toolkit.dldi) for all six modes. The [DS mode menu](../../README.md#ds-mode-menu) starts read-only and requires confirmation for writes.
+Use [nrio-raw-toolkit.nds](nrio-raw-toolkit.nds) with its embedded multi-mode driver. The [DS mode menu](../../README.md#ds-mode-menu) starts read-only and requires confirmation for writes. It also includes an [on-console boot-table repair](../../README.md#repair-using-only-the-target-cart) for supported carts with a surviving uDisk mapping. A [standalone DLDI](nrio-raw-toolkit.dldi) is available for patching.
 
 These builds can erase and rewrite physical NAND. A wrong image or offset, a failed program operation, or a power loss during an erase-block rewrite can leave the card unbootable. Save both main and spare dumps before writing.
 

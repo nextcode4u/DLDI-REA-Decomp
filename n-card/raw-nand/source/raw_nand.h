@@ -28,6 +28,10 @@ bool nand_erase_block(u32 page);
 bool nand_program_page(u32 page, const u8 *record);
 bool restore_sectors(u32 sector, u32 count, const u8 *buffer, u32 pages_per_block, u8 *workspace,
                      struct nrio_raw_write_error *error, enum nrio_raw_mode mode);
+#ifdef RAW_NAND_TOOLKIT
+bool restore_boot_table(const struct nrio_raw_table_plan *plan, u32 pages_per_block, u8 *workspace,
+                        struct nrio_raw_write_error *error);
+#endif
 #endif
 
 #endif

@@ -125,11 +125,16 @@ bool nrio_raw_read(u32 sector, u32 count, void *buffer)
 #ifdef RAW_NAND_TOOLKIT
     if (sector == NRIO_RAW_MODE_LBA && count == 0 && (u32)buffer % 4 == 0) {
         u32 mode = *(const u32 *)buffer;
-        if (mode_locked || mode > NRIO_RAW_BANNER_WRITE ||
+        if (mode_locked || mode > NRIO_RAW_TABLE_REPAIR ||
             (mode == NRIO_RAW_BANNER_WRITE && !banner_is_armed())) return false;
         active_mode = mode;
         mode_locked = true;
         return true;
+    }
+    if (sector == NRIO_RAW_REPAIR_TABLE_LBA && count == 0 && (u32)buffer % 4 == 0) {
+        if (active_mode != NRIO_RAW_TABLE_REPAIR || !workspace || write_error.stage != NRIO_RAW_WRITE_NONE)
+            return false;
+        return restore_boot_table(buffer, pages_per_block, workspace, &write_error);
     }
 #endif
     if (sector == NRIO_RAW_INFO_LBA && count == 0) {
@@ -199,6 +204,7 @@ bool nrio_raw_write(u32 sector, u32 count, const void *buffer)
         !buffer || !valid_range(sector, count)) {
         return false;
     }
+    if (active_mode == NRIO_RAW_TABLE_REPAIR) return false;
     // Erasing to update any page of block zero would also erase the boot pages.
     if (active_mode == NRIO_RAW_MAIN_PROTECTED && count && sector < pages_per_block * SECTORS_PER_PAGE) {
         return false;

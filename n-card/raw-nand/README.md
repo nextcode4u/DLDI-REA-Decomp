@@ -8,7 +8,7 @@ Use one [N-Card Recovery Toolkit `.nds`](compiled/write-enabled/nrio-raw-toolkit
 
 On a DS or DS Lite with the Slot-2 USB writer, choose a mode with **Up/Down**, then press **A**. To enable a write mode, hold **L + R** and press **A** again. Connect USB after selecting. Eject the disk on the PC and disconnect the USB cable before pressing **START**. Relaunch the same `.nds` to choose a different mode.
 
-| Mode | USB access |
+| Mode | Operation |
 | --- | --- |
 | Main: read only | Dump physical NAND main data |
 | Spare: read only | Dump packed 64-byte spare records |
@@ -16,8 +16,19 @@ On a DS or DS Lite with the Slot-2 USB writer, choose a mode with **Up/Down**, t
 | Main: full recovery write | Write main data, including the first block, subject to preflight |
 | Spare: recovery write | Write packed spare records, subject to preflight |
 | Banner: prepared ROM only | Write the prepared page 4 payload after checking the target spare snapshot |
+| Repair primary boot table | On-console repair using the target cart's surviving uDisk mapping |
 
 The previous [main reader](compiled/nrio-raw-readonly.nds), [spare reader](compiled/nrio-raw-spare-readonly.nds), and [single-mode write builds](compiled/write-enabled/) are available for reproducing earlier hardware tests.
+
+### Repair using only the target cart
+
+1. Save main and spare backups from the target with the read-only modes. Launch the toolkit independently of the target cart if it cannot boot.
+2. With the USB cable disconnected, choose **Repair primary boot table**. The DS checks the early boot data, shared spare records, secondary table at `0x40000`, and the uDisk image it maps. Unfamiliar layouts and missing data stop here.
+3. If the checks pass, hold **L + R** and press **A**. The driver rechecks the source table and the target's shared spare snapshot, replaces only the 16 KiB primary table at `0x8000` and its ECC, and verifies the entire rewritten erase block. Restart to test uDisk boot.
+
+This path uses the target's own NAND data and bypasses the safe-mode ROM. It applies to the observed 16 Gbit spare layout, with page 0's spare record blank, the three ARM7 records intact, and the repeated boot data present. It can use a supported uDisk or XuluMenu image that survives on the cart. It cannot restore an erased shared block or reinstall missing uDisk. The operation erases and rewrites the first physical erase block, with other main and spare bytes staged in RAM and preserved. Use a reliable power supply. The same-cart write has passed emulation and still needs a physical-cart test.
+
+The preflight uses the table layout observed in Apache Thunder's updater. Its ARM9 code expands each 128 KiB NAND allocation into eight little-endian physical addresses spaced `0x4000` bytes apart. The tool checks the entries needed by the mapped image and checks the compact header and the first sectors of both ARM binaries. [XuluMenu updater reference](https://github.com/ApacheThunder/XuluMenu/tree/7ceabcbc9331f84a8c4fcde38b6f60193405ee8a/XulumenuUpdator)
 
 ## Windows dump tools
 
@@ -27,7 +38,7 @@ On Windows, install Python 3 with Tcl/Tk, then double-click **Start Recovery Too
 2. In **Inspect and export**, select both dumps from the same cart. Inspect the boot regions, save a 512-byte copy of spare sector 0, or export the 16 KiB range at `0x40000` from the target main dump. Review the export against the [card's boot layout](#boot-layout-notes) before treating it as a replacement table.
 3. For a banner repair, open **Banner repair**, select the compatible donor's main and spare dumps, and choose where to create `banner-ready`. Use the resulting `.nds` and payload with the [banner-only instructions](compiled/write-enabled/banner-only/).
 
-The desktop tool works on dump files. Run NAND reads and writes separately with the DS apps. A donor-free block-table write still needs a hardware test.
+The desktop tool works on dump files. The DS app handles NAND access and [same-cart repair](#repair-using-only-the-target-cart).
 
 ## Physical addressing
 
@@ -60,11 +71,11 @@ Stock `nrio-usb-disk` gets disk capacity from a FAT or MBR header. The patches q
 - [Apache Thunder fork patch](usb/fork.patch), built against [b9b781b](https://github.com/ApacheThunder/nrio-usb-disk/tree/b9b781bf5deec5096cbc517432878430ac0e58c6).
 - [Asie upstream patch](usb/upstream.patch), for [58dbb2d](https://github.com/asiekierka/nrio-usb-disk/tree/58dbb2dba8b49e1cf4c25e26c906bafb3228bace).
 
-Build `build/nrio-raw-toolkit.dldi` from this folder with `make DEVKITPRO=/path/to/r20-sdk`. To rebuild the menu app, use the pinned Apache Thunder fork linked above. Apply `usb/fork.patch` with `git apply` and then `usb/toolkit.patch` with `git apply --unidiff-zero`. Copy `usb/raw-dldi.h` from this project to `source/nrio_raw_dldi.h` in the USB project. Build the USB app with BlocksDS using `make NRIO_RAW_REQUIRED=1`. Run `dldipatch patch nrio-raw-toolkit.dldi nrio-usb-disk.nds` with the built files, then locate the embedded DLDI magic with ID `NRWR` at header offset `0x60` and change its first byte to `0xEE` for launcher protection. The standalone DLDI keeps standard magic for patching. `make legacy` builds the original single-mode variants. [Third-party notices](compiled/licenses/)
+Build `build/nrio-raw-toolkit.dldi` from this folder with `make DEVKITPRO=/path/to/r20-sdk`. To rebuild the menu app, use the pinned Apache Thunder fork linked above. Apply `usb/fork.patch` with `git apply` and then `usb/toolkit.patch` with `git apply --unidiff-zero`. Copy `usb/raw-dldi.h` to `source/nrio_raw_dldi.h` and `usb/boot-repair.c` and `usb/boot-repair.h` to `source/` in the USB project. Build the USB app with BlocksDS using `make NRIO_RAW_REQUIRED=1`. Run `dldipatch patch nrio-raw-toolkit.dldi nrio-usb-disk.nds` with the built files, then locate the embedded DLDI magic with ID `NRWR` at header offset `0x60` and change its first byte to `0xEE` for launcher protection. The standalone DLDI keeps standard magic for patching and requires a 16 KiB DLDI slot. `make legacy` builds the original single-mode variants. [Third-party notices](compiled/licenses/)
 
 ## Verification
 
-`python3 check_transport.py` runs the relocated DLDI extracted from the combined and single-mode NDS builds in Unicorn. It checks the six mode policies and prevents mode changes after selection or sector I/O. It also checks bounds, both erase geometries, bad-marker refusal, and preservation across erase-block boundaries. It injects erase failures, program failures, and readback mismatches to check that the driver rejects later writes while allowing reads. Spare tests cover packing, the final physical page, exact replacement, and main-data preservation. The combined DS app still needs a physical hardware test. The hardware observations below use the single-mode builds.
+`python3 check_transport.py` runs the relocated DLDI extracted from the combined and single-mode NDS builds in Unicorn. It checks the USB mode policies and prevents mode changes after selection or sector I/O. It also checks bounds, both erase geometries, bad-marker refusal, and preservation across erase-block boundaries. It injects erase failures, program failures, and readback mismatches to check that the driver rejects later writes while allowing reads. Same-cart tests check that changed source or spare data prevents erase and that only the primary table and its ECC change after a successful repair. The combined DS app still needs a physical hardware test. The hardware observations below use the single-mode builds.
 
 ## Boot layout notes
 
@@ -104,7 +115,7 @@ Run the [read-only boot inspector](inspect_boot.py) on separate physical main an
 python3 inspect_boot.py target-main.bin target-spare.bin
 ```
 
-- **Primary table damaged, secondary table and uDisk intact.** On the reported uDisk-era layout, the card's table at `0x40000` can supply the contents for `0x8000` and point boot directly at its existing uDisk. The [16 Gbit test](#direct-udisk-boot-test-on-a-working-16-gbit-n-card) verified the resulting boot path using a corrected image and a subsequent uDisk reflash. A repair limited to the table using only the target card's data still needs a hardware test.
+- **Primary table damaged, secondary table and uDisk intact.** Try the [same-cart repair](#repair-using-only-the-target-cart) on the supported layout. The [16 Gbit test](#direct-udisk-boot-test-on-a-working-16-gbit-n-card) verified the resulting boot path using a corrected image and a subsequent uDisk reflash. The table-only repair still needs a hardware test.
 - **uDisk damaged.** A compatible installer can supply the uDisk section, as in the [DS Linker recovery](#third-card-recovery-and-spare-area-readback). The boot table still needs to point at the installed copy.
 - **Early boot data damaged.** Keep surviving main and spare bytes from the target. An earlier backup from that same cart can supply missing data. The [ARM7 copies](#arm7-boot-code-in-the-spare-area) and [repeated Blowfish bytes](#blowfish-data-in-the-spare-area) are potential sources for partial damage. A complete reconstruction of erased boot records without a backup remains unverified. A blank page 0 spare record alone is normal on the observed working 16 Gbit card.
 

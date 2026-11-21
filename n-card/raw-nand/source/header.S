@@ -3,7 +3,14 @@
 nrio_raw_header:
     .word 0xbf8da5ed
     .asciz " Chishm"
-    .byte 1, 13, 0x0c, 0        @ Version, image size, FIX_GOT | FIX_BSS, allocation
+.global nrio_raw_allocation
+.ifdef RAW_NAND_TOOLKIT
+    .set nrio_raw_allocation, 16384
+    .byte 1, 14, 0x0c, 0        @ Version, image size, FIX_GOT | FIX_BSS, allocation
+.else
+    .set nrio_raw_allocation, 8192
+    .byte 1, 13, 0x0c, 0
+.endif
 .ifdef RAW_NAND_TOOLKIT
     .asciz "N-Card Recovery Toolkit"
 .else

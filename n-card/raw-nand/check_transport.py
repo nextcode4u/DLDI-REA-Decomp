@@ -17,7 +17,7 @@ FIFO = 0x04100010
 RAM = 0x02100000
 STOP = RAM + 0xf0000
 PAGE_BYTES = 2112
-MAIN_READ, SPARE_READ, PROTECTED, MAIN_WRITE, SPARE_WRITE, BANNER = range(6)
+MAIN_READ, SPARE_READ, PROTECTED, MAIN_WRITE, SPARE_WRITE, BANNER, TABLE_REPAIR = range(7)
 
 
 class Flash:
@@ -347,7 +347,7 @@ def check_banner_variant(template, nand_id, mode=None):
 
 def check_toolkit(image, chip):
     device = started_device(image, chip)
-    assert not select_mode(device, 6)
+    assert not select_mode(device, 7)
     assert device.run(2, 0, 1, RAM)
     assert not select_mode(device, MAIN_WRITE)
     assert device.run(0)
@@ -371,6 +371,53 @@ def check_toolkit(image, chip):
     for failure in ('erase', 'program', 'readback'):
         check_failure(image, chip, failure, mode=MAIN_WRITE)
         check_failure(image, chip, failure, pages_written=8, mode=SPARE_WRITE)
+
+
+def check_same_cart_repair(image, chip):
+    primary_page, secondary_page = 16, 128
+    shared = bytearray(b'\xff' * 512)
+    shared[64] = 0  # The known ARM7 record is in a usual NAND marker position.
+    table = b''.join(struct.pack('<I', 0x80000 + i * 0x4000) for i in range(4096))
+
+    def setup():
+        device = recovery_device(image, chip, TABLE_REPAIR)
+        for i in range(8):
+            device.flash[i] = bytes([i]) * 2048 + shared[i * 64:(i + 1) * 64]
+            device.flash[primary_page + i] = b'\xff' * PAGE_BYTES
+            device.flash[secondary_page + i] = table[i * 2048:(i + 1) * 2048] + b'\xaa' * 64
+        device.flash[24] = b'\x51' * PAGE_BYTES
+        device.vm.mem_write(RAM, table + shared)
+        return device
+
+    device = setup()
+    before = [device.record(page) for page in range(device.pages_per_block)]
+    assert not device.run(3, 64, 32, RAM)
+    assert device.run(2, 0xfffffffb, 0, RAM)
+    assert device.erased_blocks == [0]
+    for i in range(8):
+        assert device.record(primary_page + i)[:2048] == table[i * 2048:(i + 1) * 2048]
+        assert device.record(secondary_page + i) == table[i * 2048:(i + 1) * 2048] + b'\xaa' * 64
+    for page, original in enumerate(before):
+        if not primary_page <= page < primary_page + 8:
+            assert device.record(page) == original
+    assert device.run(2, 0xfffffffb, 0, RAM)
+    assert device.erased_blocks == [0]
+
+    device = setup()
+    device.vm.mem_write(RAM, bytes([table[0] ^ 1]))
+    assert not device.run(2, 0xfffffffb, 0, RAM)
+    assert write_error(device) == (7, secondary_page, 0)
+    assert not device.erased_blocks
+
+    device = setup()
+    device.vm.mem_write(RAM + len(table) + 65, b'\x00')
+    assert not device.run(2, 0xfffffffb, 0, RAM)
+    assert write_error(device) == (2, 1, 0)
+    assert not device.erased_blocks
+
+    device = recovery_device(image, chip, MAIN_WRITE)
+    assert not device.run(2, 0xfffffffb, 0, RAM)
+    assert not device.erased_blocks
 
 
 if __name__ == '__main__':
@@ -413,5 +460,6 @@ if __name__ == '__main__':
     toolkit = (writable_path / 'nrio-raw-toolkit.nds').read_bytes()
     for chip in (0x1500d3ec, 0x3500d3ec):
         check_toolkit(toolkit, chip)
+        check_same_cart_repair(toolkit, chip)
     check_spare(toolkit, 0x3500d5ec, 1_048_576, SPARE_READ)
-    print('toolkit: all six modes, session lock and write protections passed on both geometries')
+    print('toolkit: USB modes, same-cart repair, and write protections passed on both geometries')

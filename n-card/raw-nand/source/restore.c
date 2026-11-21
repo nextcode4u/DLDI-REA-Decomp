@@ -90,7 +90,7 @@ static bool fail_write(struct nrio_raw_write_error *error, u32 stage, u32 page, 
 
 static bool rewrite_block(u32 page, u32 pages, u32 offset, u32 count,
                           const u8 *input, u8 *records, struct nrio_raw_write_error *error,
-                          enum nrio_raw_mode mode)
+                          enum nrio_raw_mode mode, const u8 *expected_spare)
 {
     bool spare = mode == NRIO_RAW_SPARE_WRITE;
     u32 update_size = spare ? SPARE_SIZE : SECTOR_SIZE;
@@ -104,6 +104,11 @@ static bool rewrite_block(u32 page, u32 pages, u32 offset, u32 count,
         u8 *record = records + i * PAGE_RECORD_SIZE;
         if (!read_page(page + i, record))
             return fail_write(error, NRIO_RAW_WRITE_READ_BLOCK, page + i, 0);
+        if (expected_spare) {
+            if (i < SPARES_PER_SECTOR && !equal(record + PAGE_SIZE, expected_spare + i * SPARE_SIZE, SPARE_SIZE))
+                return fail_write(error, NRIO_RAW_WRITE_MARKER, page + i, record[PAGE_SIZE]);
+            continue;
+        }
 #ifdef NRIO_RAW_HAS_BANNER
         if (banner) {
             if (i < BANNER_EXPECTED_PAGES &&
@@ -172,10 +177,38 @@ bool restore_sectors(u32 sector, u32 count, const u8 *buffer, u32 pages_per_bloc
         u32 first_sector = sector - offset;
         u32 page = spare ? first_sector * SPARES_PER_SECTOR : first_sector / SECTORS_PER_PAGE;
         if (!rewrite_block(page, pages_per_block, offset * updates_per_sector, batch * updates_per_sector,
-                           buffer, workspace, error, mode)) return false;
+                           buffer, workspace, error, mode, 0)) return false;
         sector += batch;
         count -= batch;
         buffer += batch * SECTOR_SIZE;
     }
     return true;
 }
+
+#ifdef RAW_NAND_TOOLKIT
+bool restore_boot_table(const struct nrio_raw_table_plan *plan, u32 pages_per_block, u8 *workspace,
+                        struct nrio_raw_write_error *error)
+{
+    if (plan->expected_spare[0] != 0xff)
+        return fail_write(error, NRIO_RAW_WRITE_MARKER, 0, plan->expected_spare[0]);
+    if (plan->expected_spare[SPARE_SIZE] != 0)
+        return fail_write(error, NRIO_RAW_WRITE_MARKER, 1, plan->expected_spare[SPARE_SIZE]);
+
+    u8 sector[SECTOR_SIZE];
+    for (u32 offset = 0; offset < NRIO_RAW_TABLE_BYTES; offset += PAGE_SIZE) {
+        u32 page = (NRIO_RAW_SECONDARY_TABLE + offset) / PAGE_SIZE;
+        if (!nand_load_page(page, false))
+            return fail_write(error, NRIO_RAW_WRITE_TABLE_SOURCE, page, 0);
+        for (u32 column = 0; column < SECTORS_PER_PAGE; ++column) {
+            if (!nand_read_sector(column, sector) ||
+                !equal(sector, plan->table + offset + column * SECTOR_SIZE, SECTOR_SIZE))
+                return fail_write(error, NRIO_RAW_WRITE_TABLE_SOURCE, page, column);
+        }
+    }
+
+    // Both supported erase geometries place the entire primary table in block zero.
+    return rewrite_block(0, pages_per_block, NRIO_RAW_PRIMARY_TABLE / SECTOR_SIZE,
+                         NRIO_RAW_TABLE_BYTES / SECTOR_SIZE, plan->table, workspace, error,
+                         NRIO_RAW_TABLE_REPAIR, plan->expected_spare);
+}
+#endif
