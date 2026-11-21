@@ -4,7 +4,7 @@ The default build compiles all 60 N-Card driver routines from C, covering the DL
 
 ## Build and compare
 
-Use devkitARM r20 with its GCC 4.1.1, binutils, and an era-compatible libnds installed beside it in the standard devkitPro layout. The build includes the SDK's original `ds_rules` and uses `<nds.h>` for the SDK types and card register definitions. The linker pulls in `libgcc` support. libfat is a consumer of the DLDI interface, so there is no libfat link dependency. The Win32 r20 tools were tested under WSL. [Archived devkitARM r20](https://wii.leseratte10.de/devkitPro/devkitARM/r20%20%282007%29/)
+Use devkitARM r20 with its GCC 4.1.1, binutils, and an era-compatible libnds installed beside it in the standard devkitPro layout. The build includes the SDK's original `ds_rules` and uses `<nds.h>` for the SDK types and card register definitions. The linker pulls in `libgcc` support. libfat is a consumer of the DLDI interface, so there is no libfat link dependency. Both driver Makefiles share [the r20 toolchain setup](toolchain/r20.mk). MSYS2 and native shells use extensionless tool names. Under WSL, the setup can also run the Windows r20 archive and translate the SDK paths for those tools. [Archived devkitARM r20](https://wii.leseratte10.de/devkitPro/devkitARM/r20%20%282007%29/)
 
 ```sh
 make DEVKITPRO=/path/to/r20-sdk
@@ -15,10 +15,10 @@ In this workspace the SDK root is `/mnt/d/WORKSPACES/jenesisds-r20-sdk.A6WpYa`. 
 ## Byte-matching build
 
 ```sh
-make DEVKITPRO=/path/to/r20-sdk C_ONLY=0 verify
+make DEVKITPRO=/path/to/r20-sdk verify
 ```
 
-This builds `build/matching/nrio.dldi` and compares it with the reference using `cmp`. With a successful comparison, the expected SHA-256 is
+This builds `build/matching/nrio.dldi` and compares it with the reference using `cmp`. Use `make C_ONLY=0` to build that variant without running the comparison. The expected SHA-256 is
 
 ```text
 716937fa83dda22df3b27bf2c08ce9ea9a0209c6d64498a83b527c0dddae8978
@@ -44,7 +44,7 @@ The [raw NAND recovery toolkit](raw-nand/) uses one DS app with directly linked 
 
 ## Upstream integration
 
-For standard filesystem reads and writes, start with the [filesystem DLDI callbacks](source/dldi/) and the [flash translation layer](source/ftl/). These sources use the driver's existing NAND page programming and mapping path. The raw toolkit's erase-block restore code is specific to its physical NAND recovery modes. The historical build uses devkitARM r20 for byte matching. The Windows executable suffix and path handling support the r20 Windows archive under WSL.
+For standard filesystem reads and writes, start with the [filesystem DLDI callbacks](source/dldi/) and the [flash translation layer](source/ftl/). These sources use the driver's existing NAND page programming and mapping path. The raw toolkit's erase-block restore code is specific to its physical NAND recovery modes. The historical build uses devkitARM r20 to reproduce the original binary. Its assembly normalization step preserves the original global offset table layout.
 
 The reconstructed driver has no project-wide license file in this repository. The [third-party notices](raw-nand/compiled/licenses/) identify components distributed with the recovery app. Confirm the reconstructed sources' license and provenance with the project maintainers before upstream integration.
 

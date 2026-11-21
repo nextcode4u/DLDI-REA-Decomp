@@ -1,49 +1,33 @@
 .DEFAULT_GOAL := all
+.SUFFIXES:
 .DELETE_ON_ERROR:
 
-DEVKITARM := $(DEVKITPRO)/devkitARM
-GCC_LIBEXEC := $(DEVKITARM)/libexec/gcc/arm-eabi/4.1.1
-
-ifeq ($(wildcard $(DEVKITARM)/bin/arm-eabi-gcc.exe),)
-EXE :=
-else
-EXE := .exe
-ifneq ($(shell command -v wslpath),)
-tool_path = $(shell wslpath -m "$(1)")
-endif
-endif
-tool_path ?= $(1)
-
-CC := $(DEVKITARM)/bin/arm-eabi-gcc$(EXE)
-AS := $(DEVKITARM)/bin/arm-eabi-as$(EXE)
-LD := $(DEVKITARM)/bin/arm-eabi-ld$(EXE)
-OBJCOPY := $(DEVKITARM)/bin/arm-eabi-objcopy$(EXE)
+R20_RULES := ../toolchain/r20.mk
+include $(R20_RULES)
 
 BUILD := build
 CFLAGS := -march=armv4t -marm -mthumb-interwork -Os -std=gnu99 -Wall -Wextra \
           -ffreestanding -fomit-frame-pointer -fPIC -ffunction-sections -fdata-sections
-CPPFLAGS := -DARM9 -isystem "$(call tool_path,$(DEVKITPRO)/libnds/include)" \
-            -isystem "$(call tool_path,$(DEVKITARM)/arm-eabi/include)"
-GCC_SEARCH := -B"$(call tool_path,$(GCC_LIBEXEC))/" -B"$(call tool_path,$(DEVKITARM)/bin)/"
+CPPFLAGS += $(R20_INCLUDES)
+DLDI_OBJECTS := $(addprefix $(BUILD)/,header.o interface.o nand.o)
 
 .PHONY: all clean
 all: $(BUILD)/nrio-raw-toolkit.dldi
 
-$(BUILD)/toolkit/%.o: source/%.c Makefile
+$(BUILD)/%.o: source/%.c Makefile $(R20_RULES)
 	@mkdir -p "$(@D)"
-	"$(CC)" $(GCC_SEARCH) $(CPPFLAGS) $(CFLAGS) -MMD -MP -S "$<" -o "$(@:.o=.s)"
+	"$(CC)" $(GCC_SEARCH) $(CPPFLAGS) $(CFLAGS) -MMD -MP -MF "$(@:.o=.d)" \
+		-MT "$@" -S "$<" -o "$(@:.o=.s)"
 	"$(AS)" "$(@:.o=.s)" -o "$@"
 
-$(BUILD)/toolkit/header.o: source/header.S Makefile
+$(BUILD)/header.o: source/header.S Makefile $(R20_RULES)
 	@mkdir -p "$(@D)"
 	"$(AS)" "$<" -o "$@"
 
-DLDI_OBJECTS := $(addprefix $(BUILD)/toolkit/,header.o interface.o nand.o)
-
-$(BUILD)/nrio-raw-toolkit.elf: $(DLDI_OBJECTS) linker.ld
+$(BUILD)/nrio-raw-toolkit.elf: $(DLDI_OBJECTS) linker.ld Makefile $(R20_RULES)
 	"$(LD)" --gc-sections -T linker.ld -o "$@" $(DLDI_OBJECTS)
 
-$(BUILD)/%.dldi: $(BUILD)/%.elf
+$(BUILD)/nrio-raw-toolkit.dldi: $(BUILD)/nrio-raw-toolkit.elf
 	"$(OBJCOPY)" -O binary "$<" "$@"
 
 clean:

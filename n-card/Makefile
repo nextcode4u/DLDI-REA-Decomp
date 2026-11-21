@@ -2,37 +2,11 @@
 .SUFFIXES:
 .DELETE_ON_ERROR:
 
-# The Windows r20 archive also runs from WSL, with explicit search paths.
-DEVKITARM := $(DEVKITPRO)/devkitARM
-GCC_VERSION := 4.1.1
-GCC_LIBDIR := $(DEVKITARM)/lib/gcc/arm-eabi/$(GCC_VERSION)
-GCC_LIBEXEC := $(DEVKITARM)/libexec/gcc/arm-eabi/$(GCC_VERSION)
+R20_RULES := toolchain/r20.mk
+include $(R20_RULES)
 
-ifneq ($(MAKECMDGOALS),clean)
-ifeq ($(wildcard $(GCC_LIBDIR)/crtbegin.o),)
-$(error Set DEVKITPRO to the SDK root containing devkitARM r20 and libnds)
-endif
-include $(DEVKITARM)/ds_rules
-endif
-
-ifneq ($(wildcard $(DEVKITARM)/bin/arm-eabi-gcc.exe),)
-CC := $(DEVKITARM)/bin/arm-eabi-gcc.exe
-AS := $(DEVKITARM)/bin/arm-eabi-as.exe
-LD := $(DEVKITARM)/bin/arm-eabi-ld.exe
-OBJCOPY := $(DEVKITARM)/bin/arm-eabi-objcopy.exe
-ifneq ($(shell command -v wslpath),)
-tool_path = $(shell wslpath -m "$(1)")
-endif
-else
-LD := $(DEVKITARM)/bin/arm-eabi-ld
-endif
-tool_path ?= $(1)
-
-GCC_SEARCH := -B"$(call tool_path,$(GCC_LIBEXEC))/" \
-              -B"$(call tool_path,$(DEVKITARM)/bin)/" \
-              -isystem "$(call tool_path,$(DEVKITARM)/arm-eabi/include)"
 ARCH := -march=armv4t -marm -mthumb-interwork -mtune=arm7tdmi
-CPPFLAGS += -DARM9 -isystem "$(call tool_path,$(LIBNDS)/include)"
+CPPFLAGS += $(R20_INCLUDES)
 CFLAGS += $(ARCH) -std=gnu99 -O2 -Wall -ffreestanding -fomit-frame-pointer -fPIC
 ASFLAGS += -mcpu=arm946e-s
 
@@ -42,7 +16,8 @@ ASM_SOURCES := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.S))
 C_RECONSTRUCTION := source/card/nand_transfer.c source/nand/page_ops.c \
                     source/ftl/mapping.c source/ftl/write.c
 
-C_ONLY ?= 1
+# A plain build uses C. Verification defaults to the reference-matching variant.
+C_ONLY ?= $(if $(filter verify,$(MAKECMDGOALS)),0,1)
 ifeq ($(C_ONLY),1)
 BUILD := build
 ASM_SOURCES := source/dldi/header.S source/system/data.S
@@ -68,18 +43,18 @@ $(BUILD)/ftl/sector_read.o: CFLAGS += -mno-thumb-interwork
 # Retain the original block-table search loop entry.
 $(BUILD)/ftl/block_tables.o: CFLAGS += -fno-tree-ch
 
-$(C_OBJECTS): $(BUILD)/%.o: source/%.c Makefile scripts/fix-got.sed
+$(C_OBJECTS): $(BUILD)/%.o: source/%.c Makefile $(R20_RULES) scripts/fix-got.sed
 	@mkdir -p "$(@D)"
 	"$(CC)" $(GCC_SEARCH) $(CPPFLAGS) $(CFLAGS) -MMD -MP -MF "$(@:.o=.d)" \
 		-MT "$@" -S "$<" -o "$(@:.o=.gcc.s)"
 	sed -E -f scripts/fix-got.sed "$(@:.o=.gcc.s)" > "$(@:.o=.s)"
 	"$(AS)" $(ASFLAGS) "$(@:.o=.s)" -o "$@"
 
-$(ASM_OBJECTS): $(BUILD)/%.o: source/%.S Makefile
+$(ASM_OBJECTS): $(BUILD)/%.o: source/%.S Makefile $(R20_RULES)
 	@mkdir -p "$(@D)"
 	"$(AS)" $(ASFLAGS) "$<" -o "$@"
 
-$(BUILD)/nrio.elf: $(OBJECTS) linker/dldi.ld Makefile
+$(BUILD)/nrio.elf: $(OBJECTS) linker/dldi.ld Makefile $(R20_RULES)
 	"$(LD)" -T linker/dldi.ld -Map "$(BUILD)/nrio.map" -o "$@" \
 		$(foreach file,$(START_FILES),"$(file)") $(OBJECTS) \
 		-L"$(call tool_path,$(GCC_LIBDIR))" -lgcc $(foreach file,$(END_FILES),"$(file)")
