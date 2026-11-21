@@ -55,6 +55,8 @@ Apache Thunder described two layouts used by different generations of cards.
 | Early single-game DSFlash2 | Points to the flashed game, described at `0x40000` | In the described single-game layout, this offset is the start of the game |
 | Newer uDisk N-Card | Points to a safe-mode ROM | Points to the normal uDisk ROM, usually at `0x80000` |
 
+Apache recalls buying an N-Card around 2008 for roughly $40–$50 or more.
+
 In the newer layout, the safe-mode ROM can update uDisk from a PC through the Slot-2 USB writer before handing off to normal uDisk. With the writer absent, Apache Thunder reports that the safe-mode ROM follows the second block table to load uDisk. The offsets in the table describe the reported layouts and may vary by card.
 
 To enter USB update mode on a DS or DS Lite, insert the USB writer into Slot-2 and connect it to the PC. Hold **L + R + A + B + D-pad Up** while launching the N-Card. Keep holding the buttons until **USB SAFE BLOCK** appears on the bottom screen. The PC updater can then run even if normal uDisk fails to boot. [Apache Thunder’s XuluMenu flashing instructions](https://github.com/ApacheThunder/XuluMenu#flashing-instructions)
@@ -79,6 +81,10 @@ Apache Thunder performed the hardware tests below and provided the recovery obse
 ### Launching the tools with an unbootable card
 
 Apache Thunder used HaxxStation and DS Download Play to launch the NRIO `.nds` tools on a DS Lite during recovery. The target N-Card was absent at power-on and inserted into Slot-1 after startup. This let the NRIO tools access the target during stages when the cart itself could not boot.
+
+Apache also launched a separate copy of uDisk through Download Play to reach XMENU and run the XuluMenu installer. With the USB writer inserted, holding **SELECT while uDisk starts** skipped the USB/Menu selection screen and opened XMENU directly.
+
+### Raw USB readback
 
 HxD on Windows showed the USB disk with 4,194,304 sectors of 512 bytes each (2 GiB) and displayed data starting at physical sector 0. The screenshot also shows `DSGBA PA` at byte offset `0x400` (sector 2). This confirms USB enumeration and reads at the start of NAND on the tested card. Apache Thunder reported that the main-area recovery build successfully wrote the intended data to the damaged card. That main-area write alone did not restore Blowfish initialization or the banner. A full dump and reads at the end of the device remain to be verified.
 
@@ -122,7 +128,7 @@ The bricked shared block then read entirely as `0xFF` in the spare-area view. Hx
 
 ### Third card recovery and spare-area readback
 
-Apache confirmed that the third card, the DS Linker, also recovered. They wrote the corrected main NAND contents up to `0x80000` with the modified DLDI, then restored the original shared-block backup. Apache reported having to rerun the XuluMenu installer after each recovery and suspected that the uDisk section needed reflashing. The reason the reinstall was needed remains unconfirmed.
+Apache confirmed that the third card, the DS Linker, also recovered. They wrote the corrected main NAND contents up to `0x80000` with the modified DLDI, then restored the original shared-block backup. Apache reported having to rerun the XuluMenu installer after each recovery and suspected that the uDisk section needed reflashing. The reason the reinstall was needed remains unconfirmed. [How Apache reached the installer](#launching-the-tools-with-an-unbootable-card)
 
 Between the main-area write and the shared-block restore, HxD showed non-`0xFF` bytes in the spare records for pages 0, 4, and 5. For example, page 0 shows `96 A9 56` at spare offsets `+4`, `+8`, and `+12`. This pattern matches the raw main-area driver's ECC layout. The driver regenerates those triplets for changed 512-byte sectors and carries the other staged spare bytes forward when it rewrites the erase block. Apache suspected that the uDisk updater clears more of the shared block. The updater's exact erase and rewrite behavior remains unverified. [Raw NAND write implementation](source/restore.c)
 
