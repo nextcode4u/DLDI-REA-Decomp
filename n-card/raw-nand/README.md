@@ -100,11 +100,13 @@ Apache Thunder reported recovering a second N-Card. The DS menu photograph shows
 
 Apache Thunder had to **deliberately put each card into a specific bricked state** before the custom uDisk updater could write to the region at main NAND offset `0x0000`. The goal was to restore the block table at `0x8000`. Apache confirmed that two N-Cards recovered fully. Apache observed that the area they called the **shared block** was mostly `0xFF` when the write succeeded. The exact changes that produced the required state and the reason the updater could write afterward remain unknown.
 
-Apache provided `shared_dslinker.bin` from a third, partially bricked DS Linker before attempting to reproduce that state. The file has 135 `0xFF` bytes out of 512, including the entire range `0x180`–`0x1FF`. It also contains three identical 64-byte records at file offsets `0x40`, `0x100`, and `0x140`. In the packed spare-area view, these positions correspond to identical spare records for NAND pages 1, 4, and 5 and all-`0xFF` records for pages 6 and 7 of USB sector 0. A paired after dump is needed to identify what changed on the DS Linker.
+Apache provided `shared_dslinker.bin` from a third, partially bricked DS Linker before attempting to reproduce that state. The file has 135 `0xFF` bytes out of 512, including the entire range `0x180`–`0x1FF`. It also contains three identical 64-byte records at file offsets `0x40`, `0x100`, and `0x140`. In the packed spare-area view, these positions correspond to identical spare records for NAND pages 1, 4, and 5 and all-`0xFF` records for pages 6 and 7 of USB sector 0.
 
 SHA-256 of `shared_dslinker.bin` is `66cb7c14f47246135ea4c737831a03d5e91324f3b8d238029386d35df61cf853`.
 
-For a paired capture, save USB sector 0 from the same card with the [spare-area reader](compiled/nrio-raw-spare-readonly.nds) before and after the write attempt. Compare the images in 64-byte records and record which page records changed, which updater and target offset were used, and whether the banner and uDisk boot worked at each stage. Treat the mostly-`0xFF` state as a test observation. Intentionally clearing the shared block can leave the card unbootable.
+In the follow-up test, Apache reported that the bricked shared block read entirely as `0xFF`. HxD shows all bytes in spare-view USB sectors 0 and 1 (`0x000`–`0x3FF`) as `0xFF`, covering the spare records for physical NAND pages 0–15. This readback covers spare data only. The full extent of the affected NAND region and the updater result for this trial remain unconfirmed.
+
+For a paired capture, use the [spare-area reader](compiled/nrio-raw-spare-readonly.nds) to save the same range before bricking, in the bricked state, and after the updater attempt. Compare the images in 64-byte records and record which page records changed, which updater and target offset were used, and whether the banner and uDisk boot worked at each stage. Intentionally clearing the shared block can leave the card unbootable.
 
 ### Banner-only write verified on hardware
 
