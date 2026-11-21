@@ -146,6 +146,8 @@ Apache Thunder identified the highlighted bytes at `0xC0`–`0xFF` in `shared_ds
 
 Apache's screenshot of the 8 Gbit programmer dump (`nrio_8gbit_rawdump.bin`) shows the 64 bytes at `0x1880`–`0x18BF` matching page 2's spare record at `0x80`–`0xBF` in `shared_dslinker.bin`. The match is consistent with 2,048 main bytes followed by 64 spare bytes per page. In that layout the page 2 spare record starts at `2 * 0x840 + 0x800 = 0x1880`. Page 3's spare record would start at `0x20C0`, outside the screenshot.
 
+The ASCII sequence `RMR` (`52 4D 52`) appears at `0x89` and `0xD1` in the spare-only dump, at the same position within the repeated bytes. The first occurrence is visible at `0x1889` in the programmer screenshot. Its meaning remains unverified.
+
 ### Banner-only write verified on hardware
 
 Apache Thunder used the banner-only build on a working N-Card and confirmed that the DS displayed the new banner and the card continued to boot fully. The first banner copy changed. The second copy's role remains unverified. [Banner-only build and hardware notes](compiled/write-enabled/banner-only/#hardware-result)
