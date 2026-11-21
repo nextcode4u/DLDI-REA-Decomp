@@ -65,6 +65,8 @@ Apache Thunder plans to change the primary block table at `0x8000` on a working 
 
 ## Recovery instructions
 
+An unbootable N-Card requires a way to launch the NRIO app independently of the cart. See [Apache Thunder’s DS Lite test setup](#launching-the-tools-with-an-unbootable-card).
+
 1. **Back up both NAND views.** With the N-Card in Slot-1 and the USB writer in Slot-2, launch the [main-area reader](compiled/nrio-raw-readonly.nds) and save a full disk image on the PC. Repeat with the [spare-area reader](compiled/nrio-raw-spare-readonly.nds) and save a separate image. Cancel any prompt to initialize or format either disk. Record the card model and the reported sector counts so the images can be identified later.
 2. **Check how far the cart boots.** Record whether the DS menu shows the banner, whether launching the cart reaches uDisk or a white screen, and whether the [USB Safe Block shortcut](#boot-layout-notes) reaches the updater on carts with that layout. A working banner can return before uDisk boots, as it did in the [ExpressCard recovery](#full-boot-restored-on-the-expresscard).
 3. **Match the repair to the finding.** Use a card-specific uDisk updater and confirm its target block table before flashing. The ExpressCard result applies to the `0x8000` variant used on that card. For a confirmed spare-area repair with replacement data appropriate for the target, use the [spare-area writer](compiled/write-enabled/nrio-raw-spare-write.nds). Its USB sector 0 covers eight spare records, so preserve any records outside the intended change in the 512-byte payload. For a banner-only change, follow the [banner-only instructions](compiled/write-enabled/banner-only/) for the page at main offset `0x2000`.
@@ -73,6 +75,10 @@ Apache Thunder plans to change the primary block table at `0x8000` on a working 
 ## Hardware results
 
 Apache Thunder performed the hardware tests below and provided the recovery observations and DS Linker sample.
+
+### Launching the tools with an unbootable card
+
+Apache Thunder used HaxxStation and DS Download Play to launch the NRIO `.nds` tools on a DS Lite during recovery. The target N-Card was absent at power-on and inserted into Slot-1 after startup. This let the NRIO tools access the target during stages when the cart itself could not boot.
 
 HxD on Windows showed the USB disk with 4,194,304 sectors of 512 bytes each (2 GiB) and displayed data starting at physical sector 0. The screenshot also shows `DSGBA PA` at byte offset `0x400` (sector 2). This confirms USB enumeration and reads at the start of NAND on the tested card. Apache Thunder reported that the main-area recovery build successfully wrote the intended data to the damaged card. That main-area write alone did not restore Blowfish initialization or the banner. A full dump and reads at the end of the device remain to be verified.
 
