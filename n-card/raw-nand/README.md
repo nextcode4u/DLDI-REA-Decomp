@@ -19,6 +19,7 @@ On a DS or DS Lite with the Slot-2 USB writer, choose a mode with **Up/Down**, t
 | Spare: recovery write | Write packed spare records, subject to preflight |
 | Banner: prepared ROM only | Write the prepared page 4 payload after checking the target spare snapshot |
 | Repair primary boot table | On-console repair using the target cart's surviving uDisk mapping |
+| Check recovery only | Run the same preflight with read-only NAND access and export the result |
 
 The older single-mode binaries used in the hardware reports are available in the [archived revision](https://github.com/nextcode4u/DLDI-REA-Decomp/tree/0b09821d66c6e91f2a94383f055720258bcfd1fb/n-card/raw-nand/compiled).
 
@@ -31,8 +32,8 @@ When **A: export log** appears after a repair, cancellation, or USB NAND session
 ### Repair using only the target cart
 
 1. Save main and spare backups from the target with the read-only modes. Launch the toolkit independently of the target cart if it cannot boot.
-2. With the USB cable disconnected, choose **Repair primary boot table**. The DS checks the early boot data, shared spare records, secondary table at `0x40000`, and the uDisk image it maps. Unfamiliar layouts and missing data stop here.
-3. If the checks pass, hold **L + R** and press **A**. The driver rechecks the source table and the target's shared spare snapshot, replaces only the 16 KiB primary table at `0x8000` and its ECC, and verifies the entire rewritten erase block. Restart to test uDisk boot.
+2. With the USB cable disconnected, choose **Check recovery only**. The DS checks the early boot data, shared spare records, secondary table at `0x40000`, and the uDisk image it maps. It reports how many table sectors differ or where the checks stopped. Export `SESSION.TXT` if you want to keep the result.
+3. To repair an eligible cart, relaunch the toolkit and choose **Repair primary boot table**. If the checks pass, hold **L + R** and press **A**. The driver rechecks the source table and the target's shared spare snapshot, replaces only the 16 KiB primary table at `0x8000` and its ECC, and verifies the entire rewritten erase block. Restart to test uDisk boot.
 
 This path uses the target's own NAND data and bypasses the safe-mode ROM. It applies to the observed 16 Gbit spare layout, with page 0's spare record blank, the three ARM7 records intact, and the repeated boot data present. It can use a supported uDisk or XuluMenu image that survives on the cart. It cannot restore an erased shared block or reinstall missing uDisk. The operation erases and rewrites the first physical erase block, with other main and spare bytes staged in RAM and preserved. Use a reliable power supply. The same-cart write has passed emulation and still needs a physical-cart test.
 

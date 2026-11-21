@@ -120,7 +120,7 @@ static bool approve_repair(void)
     }
 }
 
-void boot_repair(void)
+void boot_repair(bool check_only)
 {
     const DISC_INTERFACE *io = dldiGetInternal();
     struct nrio_raw_info spare_info, main_info, repair_info;
@@ -160,19 +160,24 @@ void boot_repair(void)
     if (!live_udisk(io, main_info.sectors * SECTOR_BYTES)) return;
 
     session_log("uDisk starts at 0x%lx.\nComparing primary table.", (unsigned long)block_address(0));
-    bool identical = true;
+    uint32_t differing_sectors = 0;
     for (uint32_t i = 0; i < table_sectors; ++i) {
         if (!io->readSectors(primary_lba + i, 1, sector)) {
             session_log("Could not read primary table.");
             return;
         }
-        if (memcmp(sector, plan.table + i * SECTOR_BYTES, SECTOR_BYTES)) identical = false;
+        if (memcmp(sector, plan.table + i * SECTOR_BYTES, SECTOR_BYTES)) ++differing_sectors;
     }
-    if (identical) {
+    if (!differing_sectors) {
         session_log("Tables already match.");
         return;
     }
-    session_log("Preflight passed. Tables differ.");
+    session_log("Preflight passed.\n%lu of %lu table sectors differ.",
+                (unsigned long)differing_sectors, (unsigned long)table_sectors);
+    if (check_only) {
+        session_log("Repair would copy 16 KiB from\n0x40000 to 0x8000. Check only.");
+        return;
+    }
     if (!approve_repair()) {
         session_log("Repair cancelled.");
         return;

@@ -1,12 +1,12 @@
 diff --git a/source/main.c b/source/main.c
-index 7138d36..cd5dd24 100644
+index 7138d36..060382a 100644
 --- a/source/main.c
 +++ b/source/main.c
 @@ -35,0 +36,3 @@
 +#include "boot-repair.h"
 +#include "nrio_raw_dldi.h"
 +#include "session-log.h"
-@@ -53,0 +57,41 @@ static void exit_to_loader(void) {
+@@ -53,0 +57,97 @@ static void exit_to_loader(void) {
 +static bool wait_for_cart(const DISC_INTERFACE *io) {
 +  if (memcmp(&io->ioType, "NRWR", 4)) {
 +    session_log("Toolkit DLDI missing.");
@@ -39,6 +39,9 @@ index 7138d36..cd5dd24 100644
 +  }
 +}
 +
++// This menu item uses the existing read-only driver views.
++enum { CHECK_RECOVERY = NRIO_RAW_TABLE_REPAIR + 1 };
++
 +static const char *const mode_names[] = {
 +  [NRIO_RAW_MAIN_READ] = "Main: read only",
 +  [NRIO_RAW_SPARE_READ] = "Spare: read only",
@@ -47,9 +50,9 @@ index 7138d36..cd5dd24 100644
 +  [NRIO_RAW_SPARE_WRITE] = "Spare: recovery write",
 +  [NRIO_RAW_BANNER_WRITE] = "Banner: prepared ROM only",
 +  [NRIO_RAW_TABLE_REPAIR] = "Repair primary boot table",
++  [CHECK_RECOVERY] = "Check recovery only",
 +};
-@@ -55 +99,53 @@ static void exit_to_loader(void) {
--ITCM_CODE int tud_idle() {
++
 +static bool confirm_write(enum nrio_raw_mode mode) {
 +  consoleClear();
 +  printf("%s\n\n", mode_names[mode]);
@@ -67,7 +70,7 @@ index 7138d36..cd5dd24 100644
 +}
 +
 +static int choose_mode(void) {
-+  enum nrio_raw_mode mode = NRIO_RAW_MAIN_READ;
++  unsigned mode = NRIO_RAW_MAIN_READ;
 +  while (1) {
 +    consoleClear();
 +    printf("N-Card Recovery Toolkit\n\n");
@@ -81,15 +84,15 @@ index 7138d36..cd5dd24 100644
 +      if (down & KEY_B)
 +        return -1;
 +      if (down & KEY_UP) {
-+        mode = mode == NRIO_RAW_MAIN_READ ? NRIO_RAW_TABLE_REPAIR : mode - 1;
++        mode = mode == NRIO_RAW_MAIN_READ ? CHECK_RECOVERY : mode - 1;
 +        break;
 +      }
 +      if (down & KEY_DOWN) {
-+        mode = mode == NRIO_RAW_TABLE_REPAIR ? NRIO_RAW_MAIN_READ : mode + 1;
++        mode = mode == CHECK_RECOVERY ? NRIO_RAW_MAIN_READ : mode + 1;
 +        break;
 +      }
 +      if (down & KEY_A) {
-+        if (mode < NRIO_RAW_MAIN_PROTECTED || mode == NRIO_RAW_TABLE_REPAIR || confirm_write(mode)) {
++        if (mode < NRIO_RAW_MAIN_PROTECTED || mode >= NRIO_RAW_TABLE_REPAIR || confirm_write(mode)) {
 +          consoleClear();
 +          session_log("Mode: %s", mode_names[mode]);
 +          return mode;
@@ -101,25 +104,26 @@ index 7138d36..cd5dd24 100644
 +  }
 +}
 +
-+
+@@ -55 +155 @@ static void exit_to_loader(void) {
+-ITCM_CODE int tud_idle() {
 +ITCM_CODE static void tud_idle(void) {
-@@ -75 +171,2 @@ ITCM_CODE int tud_idle() {
+@@ -75 +175,2 @@ ITCM_CODE int tud_idle() {
 -	tud_deinit(0);
 +	tud_deinit(BOARD_TUD_RHPORT);
 +	fifoSendValue32(FIFO_PM, PM_REQ_SLEEP_ENABLE);
-@@ -77 +173,0 @@ ITCM_CODE int tud_idle() {
+@@ -77 +177,0 @@ ITCM_CODE int tud_idle() {
 -	return 0;
-@@ -80,5 +176 @@ ITCM_CODE int tud_idle() {
+@@ -80,5 +180 @@ ITCM_CODE int tud_idle() {
 -int main(void) {
 -  defaultExceptionHandler();
 -  powerOff(POWER_3D_CORE | POWER_MATRIX);
 -
 -  ui_init();
 +static bool usb_unavailable;
-@@ -85,0 +178,2 @@ int main(void) {
+@@ -85,0 +182,2 @@ int main(void) {
 +static bool start_usb(void) {
 +  if (usb_unavailable) return false;
-@@ -90,5 +184,4 @@ int main(void) {
+@@ -90,5 +188,4 @@ int main(void) {
 -  bool usb_init_status = !isDSiMode() && tusb_init(BOARD_TUD_RHPORT, &dev_init);
 -
 -  if (isDSiMode()) {
@@ -129,18 +133,18 @@ index 7138d36..cd5dd24 100644
 +    session_log("Could not initialize USB.");
 +    usb_unavailable = true;
 +    return false;
-@@ -96 +188,0 @@ int main(void) {
+@@ -96 +192,0 @@ int main(void) {
 -
-@@ -97,0 +190,2 @@ int main(void) {
+@@ -97,0 +194,2 @@ int main(void) {
 +  return true;
 +}
-@@ -99,2 +193,3 @@ int main(void) {
+@@ -99,2 +197,3 @@ int main(void) {
 -  if (!usb_init_status) {
 -    printf(UI_COLOR_ERROR "Could not initialize USB!\n");
 +static void offer_log(void) {
 +  if (usb_unavailable) {
 +    printf("USB log export unavailable.\n");
-@@ -102,0 +198,22 @@ int main(void) {
+@@ -102,0 +202,22 @@ int main(void) {
 +  printf("\nA: export log   B: exit\n");
 +  while (1) {
 +    swiWaitForVBlank();
@@ -163,7 +167,7 @@ index 7138d36..cd5dd24 100644
 +    return;
 +  }
 +}
-@@ -104,2 +221,10 @@ int main(void) {
+@@ -104,2 +225,10 @@ int main(void) {
 -  if (!msc_dldi_initialize()) {
 -    printf(UI_COLOR_ERROR "Could not initialize DLDI!\n");
 +int main(void) {
@@ -176,14 +180,14 @@ index 7138d36..cd5dd24 100644
 +
 +  if (isDSiMode()) {
 +    session_log("This app requires a DS or DS Lite.");
-@@ -109,3 +234,18 @@ int main(void) {
+@@ -109,3 +238,18 @@ int main(void) {
 -  printf(UI_COLOR_INFO "Ready. Press START to exit.\n");
 -  
 -  return tud_idle();
 +  if (wait_for_cart(dldiGetInternal())) {
 +    int mode = choose_mode();
-+    if (mode == NRIO_RAW_TABLE_REPAIR) {
-+      boot_repair();
++    if (mode == NRIO_RAW_TABLE_REPAIR || mode == CHECK_RECOVERY) {
++      boot_repair(mode == CHECK_RECOVERY);
 +    } else if (mode >= 0) {
 +      if (!msc_dldi_initialize(mode)) {
 +        session_log("Could not initialize NAND mode.");
@@ -198,10 +202,10 @@ index 7138d36..cd5dd24 100644
 +  }
 +  offer_log();
 +  return 0;
-@@ -117 +257 @@ void tud_mount_cb(void) {
+@@ -117 +261 @@ void tud_mount_cb(void) {
 -  printf(UI_COLOR_INFO "Device connected.\n");
 +  session_log("USB host connected.");
-@@ -122 +262 @@ void tud_umount_cb(void) {
+@@ -122 +266 @@ void tud_umount_cb(void) {
 -  printf(UI_COLOR_INFO "Device disconnected.\n");
 +  session_log("USB host disconnected.");
 diff --git a/source/msc.c b/source/msc.c
