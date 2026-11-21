@@ -104,9 +104,11 @@ Apache provided `shared_dslinker.bin` from a third, partially bricked DS Linker 
 
 SHA-256 of `shared_dslinker.bin` is `66cb7c14f47246135ea4c737831a03d5e91324f3b8d238029386d35df61cf853`.
 
-For the follow-up test, Apache said they wrote a regular NAND image with its first byte (image offset `0x0000`) changed to lowercase ASCII `h` (`0x68`). Apache made that change because nrioTool had returned incorrect dumps without it. The reason this byte affected the dump remains unknown.
+For the follow-up test, Apache said they wrote a regular NAND image with its first byte (image offset `0x0000`) changed to lowercase ASCII `h` (`0x68`). Apache made that change because nrioTool had returned incorrect dumps without it. The reason this byte affected the dump remains unknown. Apache identified the `MKR` markers appearing every `0x200` bytes in the screenshot as artifacts of extracting the hex data from the custom uDisk updater. Exclude those markers when interpreting the screenshot as raw NAND data.
 
 The bricked shared block then read entirely as `0xFF` in the spare-area view. HxD shows all bytes in spare-view USB sectors 0 and 1 (`0x000`–`0x3FF`) as `0xFF`, covering the spare records for physical NAND pages 0–15. The `0x68` edit was in the image Apache wrote. The `0xFF` bytes were observed in the separate spare-area readback. The full extent of the affected NAND region and the updater result for this trial remain unconfirmed.
+
+Apache planned to flash the corrected main NAND contents up to `0x80000` first, then restore the card's shared-block backup. The outcome of that restore is pending.
 
 For a paired capture, use the [spare-area reader](compiled/nrio-raw-spare-readonly.nds) to save the same range before bricking, in the bricked state, and after the updater attempt. Compare the images in 64-byte records and record which page records changed, which updater and target offset were used, and whether the banner and uDisk boot worked at each stage. Intentionally clearing the shared block can leave the card unbootable.
 
