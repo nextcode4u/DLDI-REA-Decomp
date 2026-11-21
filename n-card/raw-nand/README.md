@@ -63,7 +63,9 @@ To enter USB update mode on a DS or DS Lite, insert the USB writer into Slot-2 a
 
 ### Direct uDisk boot test on a working 16 Gbit N-Card
 
-Apache Thunder plans to change the primary block table at `0x8000` on a working 16 Gbit N-Card so it points directly to that card’s uDisk section. This tests the boot path used in the [second-card recovery](#second-card-recovery-and-custom-banner) on a card that already boots. The result is pending.
+Apache Thunder successfully redirected the primary block table at `0x8000` on a working 16 Gbit N-Card to boot its uDisk section directly, as in the [second-card recovery](#second-card-recovery-and-custom-banner). Apache deliberately put the card into the bricked state, wrote the corrected NAND dump, restored the card's shared-block backup, then reflashed the uDisk section with the XuluMenu installer.
+
+Apache reported slightly faster boot after the change and saw no SRAM errors when launching games with existing saves. Apache had seen those errors on existing saves after bricking a card in earlier tests. The original safe-mode ROM appeared noticeably larger than those on the other tested cards and also failed on DSi in Apache's setup. Boot time and ROM size were reported qualitatively.
 
 ## Recovery instructions
 
