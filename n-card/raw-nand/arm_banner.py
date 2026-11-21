@@ -44,6 +44,24 @@ def default_template():
     return source_dir / "nrio-raw-banner.nds"
 
 
+def prepare_from_dumps(target_spare, donor_main, donor_spare, template, output_dir):
+    expected = read_range(target_spare, 0, EXPECTED_SIZE)
+    main = read_range(donor_main, BANNER_PAGE * MAIN_SIZE, MAIN_SIZE)
+    spare = read_range(donor_spare, BANNER_PAGE * SPARE_SIZE, SPARE_SIZE)
+    image = arm(template.read_bytes(), expected, main, spare)
+    app_path = output_dir / "nrio-raw-banner-armed.nds"
+    payload_path = output_dir / "banner.bin"
+    output_dir.mkdir()
+    try:
+        app_path.write_bytes(image)
+        payload_path.write_bytes(main)
+    except OSError:
+        app_path.unlink(missing_ok=True)
+        payload_path.unlink(missing_ok=True)
+        output_dir.rmdir()
+        raise
+
+
 def from_dumps(argv):
     parser = argparse.ArgumentParser(prog="arm_banner.py from-dumps",
                                      description="Prepare the banner app directly from separate NAND dumps.")
@@ -54,13 +72,7 @@ def from_dumps(argv):
     parser.add_argument("--output-dir", type=Path, default=Path("banner-ready"))
     args = parser.parse_args(argv)
     try:
-        expected = read_range(args.target_spare, 0, EXPECTED_SIZE)
-        main = read_range(args.donor_main, BANNER_PAGE * MAIN_SIZE, MAIN_SIZE)
-        spare = read_range(args.donor_spare, BANNER_PAGE * SPARE_SIZE, SPARE_SIZE)
-        image = arm(args.template.read_bytes(), expected, main, spare)
-        args.output_dir.mkdir()
-        (args.output_dir / "nrio-raw-banner-armed.nds").write_bytes(image)
-        (args.output_dir / "banner.bin").write_bytes(main)
+        prepare_from_dumps(args.target_spare, args.donor_main, args.donor_spare, args.template, args.output_dir)
     except (OSError, ValueError) as error:
         parser.exit(1, f"{error}\n")
     print(f"Created {args.output_dir / 'nrio-raw-banner-armed.nds'}")

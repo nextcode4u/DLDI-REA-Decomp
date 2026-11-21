@@ -9,6 +9,16 @@ Start with the read-only builds to back up the main and spare areas. See the [re
 
 The [write-enabled builds](compiled/write-enabled/) are in a separate folder. They can erase and rewrite physical NAND blocks. Start with the read-only downloads above for backups and inspection.
 
+## N-Card Recovery Toolkit
+
+On Windows, install Python 3 with Tcl/Tk, then double-click **Start Recovery Toolkit.cmd** in this folder. You can also run `python3 recovery_tool.py` on a desktop with Tkinter. Keep the scripts and the `compiled` folder together for access to the DS builds and the banner template.
+
+1. Use **Open DS tools folder** to find the two read-only DS apps and [save both NAND views](#recovery-instructions).
+2. In **Inspect and export**, select both dumps from the same cart. Inspect the boot regions, save a 512-byte copy of spare sector 0, or export the 16 KiB range at `0x40000` from the target main dump. Review the export against the [card's boot layout](#boot-layout-notes) before treating it as a replacement table.
+3. For a banner repair, open **Banner repair**, select the compatible donor's main and spare dumps, and choose where to create `banner-ready`. Use the resulting `.nds` and payload with the [banner-only instructions](compiled/write-enabled/banner-only/).
+
+The desktop tool works on dump files. Run NAND reads and writes separately with the DS apps. A donor-free block-table write still needs a hardware test.
+
 ## Physical addressing
 
 USB sector `n` maps to NAND main-data byte offset `n * 512`. The driver queries the chip ID for capacity and erase geometry. It bypasses the original block-table discovery, FAT volume offset, and logical block remapping. In the stock driver, `nrio_block_table_address` locates the FTL's physical block map, and the separate `nrio_nand_address` guards block low-address programming. The recovery driver uses explicit physical row and column addresses, including row zero, and checks requests against the detected chip capacity.
