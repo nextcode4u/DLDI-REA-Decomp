@@ -98,7 +98,7 @@ Apache Thunder reported recovering a second N-Card. The DS menu photograph shows
 
 ### Shared block and early NAND writes
 
-Apache Thunder later confirmed that two N-Cards had been fully recovered. While trying to restore the block table at main NAND offset `0x8000`, Apache reported that an updater targeting the region at main NAND offset `0x0000` could write there after the area they called the **shared block** was mostly `0xFF`. The condition that allowed the write remains unknown.
+Apache Thunder later confirmed that two N-Cards had been fully recovered. During one recovery, Apache reported having to **deliberately put the card into a specific bricked state** before the custom uDisk updater could write to the region at main NAND offset `0x0000`. The goal was to restore the block table at `0x8000`. The area Apache called the **shared block** was mostly `0xFF` when the write succeeded. The exact changes that put the card in that state and the reason the updater could write afterward remain unknown.
 
 Apache provided `shared_dslinker.bin` from a third, partially bricked DS Linker before attempting to reproduce that state. The file has 135 `0xFF` bytes out of 512, including the entire range `0x180`–`0x1FF`. It also contains three identical 64-byte records at file offsets `0x40`, `0x100`, and `0x140`. In the packed spare-area view, these positions correspond to identical spare records for NAND pages 1, 4, and 5 and all-`0xFF` records for pages 6 and 7 of USB sector 0. A paired after dump is needed to identify what changed on the DS Linker.
 
