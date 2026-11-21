@@ -1,6 +1,6 @@
 # N-Card physical NAND recovery
 
-Use [nrio-raw-readonly.nds](compiled/nrio-raw-readonly.nds) for the first test. It is Apache Thunder's `nrio-usb-disk` fork with the recovery DLDI already embedded. With an N-Card in Slot-1 and a DS Linker Writer in Slot-2, it should report the NAND capacity and expose a read-only USB disk. If the computer offers to initialize or format the disk, cancel and use a disk imaging tool to save a full image. The first 512 bytes in the image should come from physical NAND address zero.
+Start with the read-only builds to back up the main and spare areas. See the [recovery instructions](#recovery-instructions) and [hardware findings](#hardware-results) before selecting a write-enabled build.
 
 | Build | Standalone DLDI | USB app |
 | --- | --- | --- |
@@ -59,7 +59,16 @@ In the newer layout, the safe-mode ROM can update uDisk from a PC through the Sl
 
 To enter USB update mode on a DS or DS Lite, insert the USB writer into Slot-2 and connect it to the PC. Hold **L + R + A + B + D-pad Up** while launching the N-Card. Keep holding the buttons until **USB SAFE BLOCK** appears on the bottom screen. The PC updater can then run even if normal uDisk fails to boot. [Apache Thunder’s XuluMenu flashing instructions](https://github.com/ApacheThunder/XuluMenu#flashing-instructions)
 
+## Recovery instructions
+
+1. **Back up both NAND views.** With the N-Card in Slot-1 and the USB writer in Slot-2, launch the [main-area reader](compiled/nrio-raw-readonly.nds) and save a full disk image on the PC. Repeat with the [spare-area reader](compiled/nrio-raw-spare-readonly.nds) and save a separate image. Cancel any prompt to initialize or format either disk. Record the card model and the reported sector counts so the images can be identified later.
+2. **Check how far the cart boots.** Record whether the DS menu shows the banner, whether launching the cart reaches uDisk or a white screen, and whether the [USB Safe Block shortcut](#boot-layout-notes) reaches the updater on carts with that layout. A working banner can return before uDisk boots, as it did in the [ExpressCard recovery](#full-boot-restored-on-the-expresscard).
+3. **Match the repair to the finding.** Use a card-specific uDisk updater and confirm its target block table before flashing. The ExpressCard result applies to the `0x8000` variant used on that card. For a confirmed spare-area repair with replacement data appropriate for the target, use the [spare-area writer](compiled/write-enabled/nrio-raw-spare-write.nds). Its USB sector 0 covers eight spare records, so preserve any records outside the intended change in the 512-byte payload. For a banner-only change, follow the [banner-only instructions](compiled/write-enabled/banner-only/) for the page at main offset `0x2000`.
+4. **Verify the result.** Read back the affected main and spare data with the read-only builds and compare them with the expected bytes. Check the banner in the DS menu and launch the cart to verify that uDisk boots. Record which checks pass and any USB or DS error text.
+
 ## Hardware results
+
+Apache Thunder performed the hardware tests below and provided the recovery observations and DS Linker sample.
 
 HxD on Windows showed the USB disk with 4,194,304 sectors of 512 bytes each (2 GiB) and displayed data starting at physical sector 0. The screenshot also shows `DSGBA PA` at byte offset `0x400` (sector 2). This confirms USB enumeration and reads at the start of NAND on the tested card. Apache Thunder reported that the main-area recovery build successfully wrote the intended data to the damaged card. That main-area write alone did not restore Blowfish initialization or the banner. A full dump and reads at the end of the device remain to be verified.
 
@@ -91,9 +100,11 @@ Apache Thunder reported recovering a second N-Card. The DS menu photograph shows
 
 Apache Thunder later confirmed that two N-Cards had been fully recovered. While trying to restore the block table at main NAND offset `0x8000`, Apache reported that an updater targeting the region at main NAND offset `0x0000` could write there after the area they called the **shared block** was mostly `0xFF`. The condition that allowed the write remains unknown.
 
-Apache provided `shared_dslinker.bin` from a third, partially bricked DS Linker before attempting to reproduce that state. The 512-byte file contains three identical 64-byte records at file offsets `0x40`, `0x100`, and `0x140`. Its final 128 bytes (`0x180`–`0x1FF`) are all `0xFF`. In the packed spare-area view, these positions correspond to identical spare records for NAND pages 1, 4, and 5 and all-`0xFF` records for pages 6 and 7 of USB sector 0. The file is the before sample. A paired after dump is needed to identify what changed on the DS Linker.
+Apache provided `shared_dslinker.bin` from a third, partially bricked DS Linker before attempting to reproduce that state. The file has 135 `0xFF` bytes out of 512, including the entire range `0x180`–`0x1FF`. It also contains three identical 64-byte records at file offsets `0x40`, `0x100`, and `0x140`. In the packed spare-area view, these positions correspond to identical spare records for NAND pages 1, 4, and 5 and all-`0xFF` records for pages 6 and 7 of USB sector 0. A paired after dump is needed to identify what changed on the DS Linker.
 
 SHA-256 of `shared_dslinker.bin` is `66cb7c14f47246135ea4c737831a03d5e91324f3b8d238029386d35df61cf853`.
+
+For a paired capture, save USB sector 0 from the same card with the [spare-area reader](compiled/nrio-raw-spare-readonly.nds) before and after the write attempt. Compare the images in 64-byte records and record which page records changed, which updater and target offset were used, and whether the banner and uDisk boot worked at each stage. Treat the mostly-`0xFF` state as a test observation. Intentionally clearing the shared block can leave the card unbootable.
 
 ### Banner-only write verified on hardware
 
