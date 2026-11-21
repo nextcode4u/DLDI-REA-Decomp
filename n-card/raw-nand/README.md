@@ -59,6 +59,10 @@ In the newer layout, the safe-mode ROM can update uDisk from a PC through the Sl
 
 To enter USB update mode on a DS or DS Lite, insert the USB writer into Slot-2 and connect it to the PC. Hold **L + R + A + B + D-pad Up** while launching the N-Card. Keep holding the buttons until **USB SAFE BLOCK** appears on the bottom screen. The PC updater can then run even if normal uDisk fails to boot. [Apache Thunder’s XuluMenu flashing instructions](https://github.com/ApacheThunder/XuluMenu#flashing-instructions)
 
+### Direct uDisk boot test on a working 16 Gbit N-Card
+
+Apache Thunder plans to change the primary block table at `0x8000` on a working 16 Gbit N-Card so it points directly to that card’s uDisk section. This tests the boot path used in the [second-card recovery](#second-card-recovery-and-custom-banner) on a card that already boots. The result is pending.
+
 ## Recovery instructions
 
 1. **Back up both NAND views.** With the N-Card in Slot-1 and the USB writer in Slot-2, launch the [main-area reader](compiled/nrio-raw-readonly.nds) and save a full disk image on the PC. Repeat with the [spare-area reader](compiled/nrio-raw-spare-readonly.nds) and save a separate image. Cancel any prompt to initialize or format either disk. Record the card model and the reported sector counts so the images can be identified later.
