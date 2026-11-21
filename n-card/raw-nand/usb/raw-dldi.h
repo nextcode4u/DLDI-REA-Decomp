@@ -6,6 +6,7 @@
 #define NRIO_RAW_INFO_LBA UINT32_C(0xffffffff)
 #define NRIO_RAW_WORKSPACE_LBA UINT32_C(0xfffffffe)
 #define NRIO_RAW_WRITE_ERROR_LBA UINT32_C(0xfffffffd)
+#define NRIO_RAW_MODE_LBA UINT32_C(0xfffffffc)
 #define NRIO_RAW_ABI_VERSION UINT32_C(1)
 #define NRIO_RAW_WORKSPACE_BYTES (128u * (2048u + 64u))
 
@@ -25,6 +26,16 @@ enum nrio_raw_write_stage {
     NRIO_RAW_WRITE_PROGRAM,
     NRIO_RAW_WRITE_VERIFY_READ,
     NRIO_RAW_WRITE_VERIFY_DATA,
+};
+
+/* Toolkit mode selection is a one-time private read with count=0. */
+enum nrio_raw_mode {
+    NRIO_RAW_MAIN_READ,
+    NRIO_RAW_SPARE_READ,
+    NRIO_RAW_MAIN_PROTECTED,
+    NRIO_RAW_MAIN_WRITE,
+    NRIO_RAW_SPARE_WRITE,
+    NRIO_RAW_BANNER_WRITE,
 };
 
 struct nrio_raw_write_error {

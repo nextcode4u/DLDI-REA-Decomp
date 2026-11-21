@@ -1,0 +1,124 @@
+diff --git a/source/main.c b/source/main.c
+index 7138d36..0b71980 100644
+--- a/source/main.c
++++ b/source/main.c
+@@ -35,0 +36 @@
++#include "nrio_raw_dldi.h"
+@@ -53,0 +55,59 @@ static void exit_to_loader(void) {
++static const char *const mode_names[] = {
++  [NRIO_RAW_MAIN_READ] = "Main: read only",
++  [NRIO_RAW_SPARE_READ] = "Spare: read only",
++  [NRIO_RAW_MAIN_PROTECTED] = "Main: protect boot block",
++  [NRIO_RAW_MAIN_WRITE] = "Main: full recovery write",
++  [NRIO_RAW_SPARE_WRITE] = "Spare: recovery write",
++  [NRIO_RAW_BANNER_WRITE] = "Banner: prepared ROM only",
++};
++
++static bool confirm_write(enum nrio_raw_mode mode) {
++  consoleClear();
++  printf("%s\n\n", mode_names[mode]);
++  printf(UI_COLOR_ERROR "Writes can erase boot data.\n");
++  printf("\x1b[0mKeep a main and spare backup.\n\nHold L + R and press A.\nPress B to go back.\n");
++  while (1) {
++    swiWaitForVBlank();
++    scanKeys();
++    uint32_t down = keysDown();
++    if (down & KEY_B)
++      return false;
++    if ((down & KEY_A) && (keysHeld() & (KEY_L | KEY_R)) == (KEY_L | KEY_R))
++      return true;
++  }
++}
++
++static enum nrio_raw_mode choose_mode(void) {
++  enum nrio_raw_mode mode = NRIO_RAW_MAIN_READ;
++  while (1) {
++    consoleClear();
++    printf("N-Card Recovery Toolkit\n\n");
++    for (unsigned i = 0; i < sizeof(mode_names) / sizeof(mode_names[0]); ++i)
++      printf("%c %s\n", i == mode ? '>' : ' ', mode_names[i]);
++    printf("\nUp/Down: mode   A: select\nB: exit\n\nConnect USB after selecting.\n");
++    while (1) {
++      swiWaitForVBlank();
++      scanKeys();
++      uint32_t down = keysDown();
++      if (down & KEY_B)
++        exit(0);
++      if (down & KEY_UP) {
++        mode = mode == NRIO_RAW_MAIN_READ ? NRIO_RAW_BANNER_WRITE : mode - 1;
++        break;
++      }
++      if (down & KEY_DOWN) {
++        mode = mode == NRIO_RAW_BANNER_WRITE ? NRIO_RAW_MAIN_READ : mode + 1;
++        break;
++      }
++      if (down & KEY_A) {
++        if (mode < NRIO_RAW_MAIN_PROTECTED || confirm_write(mode)) {
++          consoleClear();
++          printf("%s\n\n", mode_names[mode]);
++          return mode;
++        }
++        break;
++      }
++    }
++  }
++}
++
+@@ -86,6 +145,0 @@ int main(void) {
+-  tusb_rhport_init_t dev_init = {
+-    .role = TUSB_ROLE_DEVICE,
+-    .speed = TUSB_SPEED_AUTO
+-  };
+-  bool usb_init_status = !isDSiMode() && tusb_init(BOARD_TUD_RHPORT, &dev_init);
+-
+@@ -97,4 +151,3 @@ int main(void) {
+-  ui_show_chip_id();
+-
+-  if (!usb_init_status) {
+-    printf(UI_COLOR_ERROR "Could not initialize USB!\n");
++  enum nrio_raw_mode mode = choose_mode();
++  if (!msc_dldi_initialize(mode)) {
++    printf(UI_COLOR_ERROR "Could not initialize DLDI!\n");
+@@ -104,2 +157,6 @@ int main(void) {
+-  if (!msc_dldi_initialize()) {
+-    printf(UI_COLOR_ERROR "Could not initialize DLDI!\n");
++  tusb_rhport_init_t dev_init = {
++    .role = TUSB_ROLE_DEVICE,
++    .speed = TUSB_SPEED_AUTO
++  };
++  if (!tusb_init(BOARD_TUD_RHPORT, &dev_init)) {
++    printf(UI_COLOR_ERROR "Could not initialize USB!\n");
+@@ -109 +166,3 @@ int main(void) {
+-  printf(UI_COLOR_INFO "Ready. Press START to exit.\n");
++  ui_show_chip_id();
++
++  printf(UI_COLOR_INFO "Ready. Eject before START.\n");
+diff --git a/source/msc.c b/source/msc.c
+index 579fa97..04bc528 100644
+--- a/source/msc.c
++++ b/source/msc.c
+@@ -42 +42 @@ static uint32_t raw_workspace[NRIO_RAW_WORKSPACE_BYTES / sizeof(uint32_t)]
+-ITCM_CODE bool msc_dldi_initialize(void) {
++ITCM_CODE bool msc_dldi_initialize(uint32_t mode) {
+@@ -44,2 +44,2 @@ ITCM_CODE bool msc_dldi_initialize(void) {
+-#if NRIO_RAW_REQUIRED
+-  if (memcmp(&io->ioType, "NRWR", 4)) {
++  raw_driver = !memcmp(&io->ioType, "NRWR", 4);
++  if (!raw_driver) {
+@@ -49 +48,0 @@ ITCM_CODE bool msc_dldi_initialize(void) {
+-#endif
+@@ -53 +51,0 @@ ITCM_CODE bool msc_dldi_initialize(void) {
+-  raw_driver = !memcmp(&io->ioType, "NRWR", 4);
+@@ -54,0 +53,5 @@ ITCM_CODE bool msc_dldi_initialize(void) {
++    if (!io->readSectors(NRIO_RAW_MODE_LBA, 0, &mode)) {
++      printf(UI_COLOR_ERROR "%s\n", mode == NRIO_RAW_BANNER_WRITE
++        ? "Banner requires a prepared ROM." : "Toolkit driver required.");
++      return false;
++    }
+diff --git a/source/msc.h b/source/msc.h
+index 7990e65..b4e0514 100644
+--- a/source/msc.h
++++ b/source/msc.h
+@@ -29 +29 @@
+-ITCM_CODE bool msc_dldi_initialize(void);
++ITCM_CODE bool msc_dldi_initialize(uint32_t mode);

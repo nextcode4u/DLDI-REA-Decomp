@@ -1,6 +1,10 @@
 # Write-enabled N-Card recovery builds
 
-These builds can erase and rewrite physical NAND. A wrong image or offset, a failed program operation, or a power loss during an erase-block rewrite can leave the card unbootable. Save both main and spare dumps using the [read-only builds](../../README.md) before using any binary in this folder.
+Use [nrio-raw-toolkit.nds](nrio-raw-toolkit.nds) and its [standalone DLDI](nrio-raw-toolkit.dldi) for all six modes. The [DS mode menu](../../README.md#ds-mode-menu) starts read-only and requires confirmation for writes.
+
+These builds can erase and rewrite physical NAND. A wrong image or offset, a failed program operation, or a power loss during an erase-block rewrite can leave the card unbootable. Save both main and spare dumps before writing.
+
+## Previous single-mode builds
 
 | Build | USB app | Standalone DLDI |
 | --- | --- | --- |

@@ -26,8 +26,23 @@ CPPFLAGS := -DARM9 -isystem "$(call tool_path,$(DEVKITPRO)/libnds/include)" \
             -isystem "$(call tool_path,$(DEVKITARM)/arm-eabi/include)"
 GCC_SEARCH := -B"$(call tool_path,$(GCC_LIBEXEC))/" -B"$(call tool_path,$(DEVKITARM)/bin)/"
 
-.PHONY: all clean
-all: $(BUILD)/nrio-raw-readonly.dldi $(BUILD)/nrio-raw-recovery.dldi $(BUILD)/nrio-raw-spare-readonly.dldi $(BUILD)/nrio-raw-spare-write.dldi $(BUILD)/nrio-raw-protected.dldi $(BUILD)/nrio-raw-banner.dldi
+.PHONY: all legacy clean
+all: $(BUILD)/nrio-raw-toolkit.dldi
+legacy: $(BUILD)/nrio-raw-readonly.dldi $(BUILD)/nrio-raw-recovery.dldi $(BUILD)/nrio-raw-spare-readonly.dldi $(BUILD)/nrio-raw-spare-write.dldi $(BUILD)/nrio-raw-protected.dldi $(BUILD)/nrio-raw-banner.dldi
+
+$(BUILD)/toolkit/%.o: source/%.c Makefile
+	@mkdir -p "$(@D)"
+	"$(CC)" $(GCC_SEARCH) $(CPPFLAGS) $(CFLAGS) -DRAW_NAND_WRITE -DRAW_NAND_TOOLKIT -MMD -MP -S "$<" -o "$(@:.o=.s)"
+	"$(AS)" "$(@:.o=.s)" -o "$@"
+
+$(BUILD)/toolkit/header.o: source/header.S Makefile
+	@mkdir -p "$(@D)"
+	"$(AS)" --defsym RAW_NAND_TOOLKIT=1 "$<" -o "$@"
+
+TOOLKIT_OBJECTS := $(addprefix $(BUILD)/toolkit/,header.o interface.o nand.o restore.o)
+
+$(BUILD)/nrio-raw-toolkit.elf: $(TOOLKIT_OBJECTS) linker.ld
+	"$(LD)" -T linker.ld -o "$@" $(TOOLKIT_OBJECTS)
 
 $(BUILD)/read-only/%.o: source/%.c Makefile
 	@mkdir -p "$(@D)"
@@ -116,4 +131,4 @@ $(BUILD)/%.dldi: $(BUILD)/%.elf
 clean:
 	rm -rf "$(BUILD)"
 
--include $(READ_ONLY_OBJECTS:.o=.d) $(RECOVERY_OBJECTS:.o=.d) $(SPARE_OBJECTS:.o=.d) $(SPARE_WRITE_OBJECTS:.o=.d) $(PROTECTED_OBJECTS:.o=.d) $(BANNER_OBJECTS:.o=.d)
+-include $(TOOLKIT_OBJECTS:.o=.d) $(READ_ONLY_OBJECTS:.o=.d) $(RECOVERY_OBJECTS:.o=.d) $(SPARE_OBJECTS:.o=.d) $(SPARE_WRITE_OBJECTS:.o=.d) $(PROTECTED_OBJECTS:.o=.d) $(BANNER_OBJECTS:.o=.d)

@@ -152,7 +152,7 @@ class RecoveryTool:
             self.show_error(error)
 
     def open_ds_tools(self):
-        directory = Path(__file__).resolve().parent / "compiled"
+        directory = Path(__file__).resolve().parent / "compiled" / "write-enabled"
         try:
             if sys.platform == "win32":
                 os.startfile(directory)

@@ -1,19 +1,29 @@
 # N-Card physical NAND recovery
 
-Start with the read-only builds to back up the main and spare areas. See the [recovery instructions](#recovery-instructions) and [hardware findings](#hardware-results) before selecting a write-enabled build.
-
-| Build | Standalone DLDI | USB app |
-| --- | --- | --- |
-| Read-only dump | [nrio-raw-readonly.dldi](compiled/nrio-raw-readonly.dldi) | [nrio-raw-readonly.nds](compiled/nrio-raw-readonly.nds) |
-| Read-only spare dump | [nrio-raw-spare-readonly.dldi](compiled/nrio-raw-spare-readonly.dldi) | [nrio-raw-spare-readonly.nds](compiled/nrio-raw-spare-readonly.nds) |
-
-The [write-enabled builds](compiled/write-enabled/) are in a separate folder. They can erase and rewrite physical NAND blocks. Start with the read-only downloads above for backups and inspection.
-
 ## N-Card Recovery Toolkit
+
+Use one [N-Card Recovery Toolkit `.nds`](compiled/write-enabled/nrio-raw-toolkit.nds) for main-area and spare-area access. It includes the [multi-mode raw DLDI](compiled/write-enabled/nrio-raw-toolkit.dldi) and starts with main-area read-only selected. The standalone DLDI also starts read-only and uses the private mode command for other modes.
+
+### DS mode menu
+
+On a DS or DS Lite with the Slot-2 USB writer, choose a mode with **Up/Down**, then press **A**. To enable a write mode, hold **L + R** and press **A** again. Connect USB after selecting. Eject the disk on the PC and disconnect the USB cable before pressing **START**. Relaunch the same `.nds` to choose a different mode.
+
+| Mode | USB access |
+| --- | --- |
+| Main: read only | Dump physical NAND main data |
+| Spare: read only | Dump packed 64-byte spare records |
+| Main: protect boot block | Write main data outside the first physical erase block |
+| Main: full recovery write | Write main data, including the first block, subject to preflight |
+| Spare: recovery write | Write packed spare records, subject to preflight |
+| Banner: prepared ROM only | Write the prepared page 4 payload after checking the target spare snapshot |
+
+The previous [main reader](compiled/nrio-raw-readonly.nds), [spare reader](compiled/nrio-raw-spare-readonly.nds), and [single-mode write builds](compiled/write-enabled/) are available for reproducing earlier hardware tests.
+
+## Windows dump tools
 
 On Windows, install Python 3 with Tcl/Tk, then double-click **Start Recovery Toolkit.cmd** in this folder. You can also run `python3 recovery_tool.py` on a desktop with Tkinter. Keep the scripts and the `compiled` folder together for access to the DS builds and the banner template.
 
-1. Use **Open DS tools folder** to find the two read-only DS apps and [save both NAND views](#recovery-instructions).
+1. Use **Open DS tools folder** to find the combined `.nds` and [save both NAND views](#recovery-instructions).
 2. In **Inspect and export**, select both dumps from the same cart. Inspect the boot regions, save a 512-byte copy of spare sector 0, or export the 16 KiB range at `0x40000` from the target main dump. Review the export against the [card's boot layout](#boot-layout-notes) before treating it as a replacement table.
 3. For a banner repair, open **Banner repair**, select the compatible donor's main and spare dumps, and choose where to create `banner-ready`. Use the resulting `.nds` and payload with the [banner-only instructions](compiled/write-enabled/banner-only/).
 
@@ -50,11 +60,11 @@ Stock `nrio-usb-disk` gets disk capacity from a FAT or MBR header. The patches q
 - [Apache Thunder fork patch](usb/fork.patch), built against [b9b781b](https://github.com/ApacheThunder/nrio-usb-disk/tree/b9b781bf5deec5096cbc517432878430ac0e58c6).
 - [Asie upstream patch](usb/upstream.patch), for [58dbb2d](https://github.com/asiekierka/nrio-usb-disk/tree/58dbb2dba8b49e1cf4c25e26c906bafb3228bace).
 
-Build the standalone drivers from this folder with `make DEVKITPRO=/path/to/r20-sdk`. Apply the matching USB patch in a checkout of the USB app, initialize its submodules if applicable, and build it with BlocksDS using `make NRIO_RAW_REQUIRED=1`. Make one copy of the resulting NDS per variant and run `dldipatch patch DRIVER.dldi COPY.nds`. To reproduce the launcher protection, locate the embedded DLDI magic with ID `NRWR` at header offset `0x60` and change its first byte to `0xEE`. [Third-party notices](compiled/licenses/)
+Build `build/nrio-raw-toolkit.dldi` from this folder with `make DEVKITPRO=/path/to/r20-sdk`. To rebuild the menu app, use the pinned Apache Thunder fork linked above. Apply `usb/fork.patch` with `git apply` and then `usb/toolkit.patch` with `git apply --unidiff-zero`. Copy `usb/raw-dldi.h` from this project to `source/nrio_raw_dldi.h` in the USB project. Build the USB app with BlocksDS using `make NRIO_RAW_REQUIRED=1`. Run `dldipatch patch nrio-raw-toolkit.dldi nrio-usb-disk.nds` with the built files, then locate the embedded DLDI magic with ID `NRWR` at header offset `0x60` and change its first byte to `0xEE` for launcher protection. The standalone DLDI keeps standard magic for patching. `make legacy` builds the original single-mode variants. [Third-party notices](compiled/licenses/)
 
 ## Verification
 
-`python3 check_transport.py` runs the relocated DLDI extracted from each compiled NDS in Unicorn. It checks sector zero, the final sector, out-of-range rejection, both erase geometries, write gating, preservation of adjacent data and spare bytes across erase-block boundaries, and bad-marker refusal against a simulated NAND bridge. It also injects erase failures, program failures, and readback mismatches to check that the driver rejects later writes while allowing reads. The spare-area tests also check eight-record packing, capacity, the final physical page, read-only write rejection, exact spare replacement across erase blocks, main-data preservation, and failure handling. See the hardware observations below for the spare-area read test.
+`python3 check_transport.py` runs the relocated DLDI extracted from the combined and single-mode NDS builds in Unicorn. It checks the six mode policies and prevents mode changes after selection or sector I/O. It also checks bounds, both erase geometries, bad-marker refusal, and preservation across erase-block boundaries. It injects erase failures, program failures, and readback mismatches to check that the driver rejects later writes while allowing reads. Spare tests cover packing, the final physical page, exact replacement, and main-data preservation. The combined DS app still needs a physical hardware test. The hardware observations below use the single-mode builds.
 
 ## Boot layout notes
 
@@ -81,9 +91,9 @@ Apache reported slightly faster boot after the change and saw no SRAM errors whe
 
 An unbootable N-Card requires a way to launch the NRIO app independently of the cart. See [Apache Thunder’s DS Lite test setup](#launching-the-tools-with-an-unbootable-card).
 
-1. **Back up both NAND views.** With the N-Card in Slot-1 and the USB writer in Slot-2, launch the [main-area reader](compiled/nrio-raw-readonly.nds) and save a full disk image on the PC. Repeat with the [spare-area reader](compiled/nrio-raw-spare-readonly.nds) and save a separate image. Cancel any prompt to initialize or format either disk. Record the card model and the reported sector counts so the images can be identified later.
+1. **Back up both NAND views.** With the N-Card in Slot-1 and the USB writer in Slot-2, launch the toolkit in **Main: read only** and save a full disk image on the PC. Relaunch in **Spare: read only** and save a separate image. Cancel any prompt to initialize or format either disk. Record the card model and reported sector counts.
 2. **Check how far the cart boots.** Record whether the DS menu shows the banner, whether launching the cart reaches uDisk or a white screen, and whether the [USB Safe Block shortcut](#boot-layout-notes) reaches the updater on carts with that layout. A working banner can return before uDisk boots, as it did in the [ExpressCard recovery](#full-boot-restored-on-the-expresscard).
-3. **Match the repair to the finding.** Use a card-specific uDisk updater and confirm its target block table before flashing. The ExpressCard result applies to the `0x8000` variant used on that card. For a confirmed spare-area repair with replacement data appropriate for the target, use the [spare-area writer](compiled/write-enabled/nrio-raw-spare-write.nds). Its USB sector 0 covers eight spare records, so preserve any records outside the intended change in the 512-byte payload. For a banner-only change, follow the [banner-only instructions](compiled/write-enabled/banner-only/) for the page at main offset `0x2000`.
+3. **Match the repair to the finding.** Use a card-specific uDisk updater and confirm its target block table before flashing. The ExpressCard result applies to the `0x8000` variant used on that card. For a confirmed spare-area repair with replacement data appropriate for the target, select **Spare: recovery write**. Its USB sector 0 covers eight spare records, so preserve any records outside the intended change in the 512-byte payload. For a banner-only change, follow the [banner instructions](compiled/write-enabled/banner-only/) for the page at main offset `0x2000`.
 4. **Verify the result.** Read back the affected main and spare data with the read-only builds and compare them with the expected bytes. Check the banner in the DS menu and launch the cart to verify that uDisk boots. Record which checks pass and any USB or DS error text.
 
 ### Assess recovery using only the target card

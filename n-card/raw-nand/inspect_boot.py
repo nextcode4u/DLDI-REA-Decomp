@@ -72,8 +72,8 @@ def inspect_boot(main_dump, spare_dump):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("main_dump", type=Path, help="main-only dump from nrio-raw-readonly")
-    parser.add_argument("spare_dump", type=Path, help="spare-only dump from nrio-raw-spare-readonly")
+    parser.add_argument("main_dump", type=Path, help="main-only dump from Main: read only")
+    parser.add_argument("spare_dump", type=Path, help="spare-only dump from Spare: read only")
     args = parser.parse_args()
     try:
         print(inspect_boot(args.main_dump, args.spare_dump))

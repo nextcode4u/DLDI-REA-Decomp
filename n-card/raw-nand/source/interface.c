@@ -1,5 +1,5 @@
 #include "raw_nand.h"
-#ifdef RAW_NAND_BANNER
+#ifdef NRIO_RAW_HAS_BANNER
 #include "banner_plan.h"
 #endif
 
@@ -7,14 +7,53 @@ static u32 sector_count;
 static u32 pages_per_block;
 static u32 nand_id;
 
+#if defined(RAW_NAND_TOOLKIT)
+static enum nrio_raw_mode active_mode;
+static bool mode_locked;
+#elif defined(RAW_NAND_BANNER)
+#define active_mode NRIO_RAW_BANNER_WRITE
+#elif defined(RAW_NAND_PROTECT_BOOT)
+#define active_mode NRIO_RAW_MAIN_PROTECTED
+#elif defined(RAW_NAND_SPARE) && defined(RAW_NAND_WRITE)
+#define active_mode NRIO_RAW_SPARE_WRITE
+#elif defined(RAW_NAND_SPARE)
+#define active_mode NRIO_RAW_SPARE_READ
+#elif defined(RAW_NAND_WRITE)
+#define active_mode NRIO_RAW_MAIN_WRITE
+#else
+#define active_mode NRIO_RAW_MAIN_READ
+#endif
+
+static bool spare_view(void)
+{
+    return active_mode == NRIO_RAW_SPARE_READ || active_mode == NRIO_RAW_SPARE_WRITE;
+}
+
+static u32 visible_sectors(void)
+{
+    return spare_view() ? sector_count / (SECTORS_PER_PAGE * SPARES_PER_SECTOR) : sector_count;
+}
+
 #ifdef RAW_NAND_WRITE
 static u8 *workspace;
 static struct nrio_raw_write_error write_error;
+
+static bool writable_mode(void)
+{
+#ifdef NRIO_RAW_HAS_BANNER
+    if (active_mode == NRIO_RAW_BANNER_WRITE) return banner_is_armed();
+#endif
+    return active_mode >= NRIO_RAW_MAIN_PROTECTED;
+}
 #endif
 
 bool nrio_raw_startup(void)
 {
     sector_count = 0;
+#ifdef RAW_NAND_TOOLKIT
+    active_mode = NRIO_RAW_MAIN_READ;
+    mode_locked = false;
+#endif
 #ifdef RAW_NAND_WRITE
     workspace = 0;
     write_error.stage = NRIO_RAW_WRITE_NONE;
@@ -46,9 +85,6 @@ bool nrio_raw_startup(void)
         sector_count = sectors_per_128_mib * 16;
     }
     pages_per_block = nand_id & (0x20u << 24) ? 128 : 64;
-#ifdef RAW_NAND_SPARE
-    sector_count /= SECTORS_PER_PAGE * SPARES_PER_SECTOR;
-#endif
     return sector_count != 0;
 }
 
@@ -77,7 +113,8 @@ bool nrio_raw_shutdown(void)
 
 static bool valid_range(u32 sector, u32 count)
 {
-    return sector < sector_count && count <= sector_count - sector;
+    u32 limit = visible_sectors();
+    return sector < limit && count <= limit - sector;
 }
 
 bool nrio_raw_read(u32 sector, u32 count, void *buffer)
@@ -85,15 +122,22 @@ bool nrio_raw_read(u32 sector, u32 count, void *buffer)
     if (!sector_count || !buffer) {
         return false;
     }
+#ifdef RAW_NAND_TOOLKIT
+    if (sector == NRIO_RAW_MODE_LBA && count == 0 && (u32)buffer % 4 == 0) {
+        u32 mode = *(const u32 *)buffer;
+        if (mode_locked || mode > NRIO_RAW_BANNER_WRITE ||
+            (mode == NRIO_RAW_BANNER_WRITE && !banner_is_armed())) return false;
+        active_mode = mode;
+        mode_locked = true;
+        return true;
+    }
+#endif
     if (sector == NRIO_RAW_INFO_LBA && count == 0) {
         struct nrio_raw_info *info = buffer;
         info->version = NRIO_RAW_ABI_VERSION;
-        info->sectors = sector_count;
+        info->sectors = visible_sectors();
 #ifdef RAW_NAND_WRITE
-        info->workspace_bytes = pages_per_block * PAGE_RECORD_SIZE;
-#ifdef RAW_NAND_BANNER
-        if (!banner_is_armed()) info->workspace_bytes = 0;
-#endif
+        info->workspace_bytes = writable_mode() ? pages_per_block * PAGE_RECORD_SIZE : 0;
 #else
         info->workspace_bytes = 0;
 #endif
@@ -108,9 +152,7 @@ bool nrio_raw_read(u32 sector, u32 count, void *buffer)
     }
     if (sector == NRIO_RAW_WORKSPACE_LBA && count >= pages_per_block * PAGE_RECORD_SIZE &&
         (u32)buffer % 4 == 0) {
-#ifdef RAW_NAND_BANNER
-        if (!banner_is_armed()) return false;
-#endif
+        if (!writable_mode()) return false;
         workspace = buffer;
         return true;
     }
@@ -118,16 +160,22 @@ bool nrio_raw_read(u32 sector, u32 count, void *buffer)
     if (!valid_range(sector, count)) {
         return false;
     }
+#ifdef RAW_NAND_TOOLKIT
+    mode_locked = true;
+#endif
     u8 *output = buffer;
-#ifdef RAW_NAND_SPARE
-    u32 page = sector * SPARES_PER_SECTOR;
-    for (u32 i = 0; i < count * SPARES_PER_SECTOR; ++i) {
-        if (!nand_load_page(page + i, true) || !nand_read_spare(output)) {
-            return false;
+#if defined(RAW_NAND_SPARE) || defined(RAW_NAND_TOOLKIT)
+    if (spare_view()) {
+        u32 page = sector * SPARES_PER_SECTOR;
+        for (u32 i = 0; i < count * SPARES_PER_SECTOR; ++i) {
+            if (!nand_load_page(page + i, true) || !nand_read_spare(output)) {
+                return false;
+            }
+            output += SPARE_SIZE;
         }
-        output += SPARE_SIZE;
+        return true;
     }
-#else
+#endif
     u32 loaded_page = (u32)-1;
     while (count--) {
         u32 page = sector / SECTORS_PER_PAGE;
@@ -141,28 +189,26 @@ bool nrio_raw_read(u32 sector, u32 count, void *buffer)
         output += SECTOR_SIZE;
         ++sector;
     }
-#endif
     return true;
 }
 
 bool nrio_raw_write(u32 sector, u32 count, const void *buffer)
 {
 #ifdef RAW_NAND_WRITE
-    if (!workspace || write_error.stage != NRIO_RAW_WRITE_NONE || !buffer || !valid_range(sector, count)) {
+    if (!workspace || !writable_mode() || write_error.stage != NRIO_RAW_WRITE_NONE ||
+        !buffer || !valid_range(sector, count)) {
         return false;
     }
-#ifdef RAW_NAND_PROTECT_BOOT
     // Erasing to update any page of block zero would also erase the boot pages.
-    if (count && sector < pages_per_block * SECTORS_PER_PAGE) {
+    if (active_mode == NRIO_RAW_MAIN_PROTECTED && count && sector < pages_per_block * SECTORS_PER_PAGE) {
+        return false;
+    }
+#ifdef NRIO_RAW_HAS_BANNER
+    if (active_mode == NRIO_RAW_BANNER_WRITE && (sector != BANNER_LBA || count != SECTORS_PER_PAGE)) {
         return false;
     }
 #endif
-#ifdef RAW_NAND_BANNER
-    if (!banner_is_armed() || sector != BANNER_LBA || count != SECTORS_PER_PAGE) {
-        return false;
-    }
-#endif
-    return restore_sectors(sector, count, buffer, pages_per_block, workspace, &write_error);
+    return restore_sectors(sector, count, buffer, pages_per_block, workspace, &write_error, active_mode);
 #else
     (void)sector;
     (void)count;

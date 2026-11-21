@@ -38,6 +38,9 @@ def read_range(path, offset, length):
 
 def default_template():
     source_dir = Path(__file__).resolve().parent
+    toolkit = source_dir / "compiled/write-enabled/nrio-raw-toolkit.nds"
+    if toolkit.is_file():
+        return toolkit
     repo_template = source_dir / "compiled/write-enabled/banner-only/nrio-raw-banner.nds"
     if repo_template.is_file():
         return repo_template
