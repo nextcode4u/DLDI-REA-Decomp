@@ -87,6 +87,14 @@ The updated write-enabled USB apps print a second error line. For example, `spar
 
 Apache Thunder reported recovering a second N-Card. The DS menu photograph shows its custom icon and `DSGBA NAND CARD` banner. Apache suspected that the first hidden ROM's block table still needed repair. The uDisk section or its block table was also reported unresolved during testing. The report does not establish that the banner-only build wrote the banner in the photograph.
 
+### Shared block and early NAND writes
+
+Apache Thunder later confirmed that two N-Cards had been fully recovered. While trying to restore the block table at main NAND offset `0x8000`, Apache reported that an updater targeting the region at main NAND offset `0x0000` could write there after the area they called the **shared block** was mostly `0xFF`. The condition that allowed the write remains unknown.
+
+Apache provided `shared_dslinker.bin` from a third, partially bricked DS Linker before attempting to reproduce that state. The 512-byte file contains three identical 64-byte records at file offsets `0x40`, `0x100`, and `0x140`. Its final 128 bytes (`0x180`–`0x1FF`) are all `0xFF`. In the packed spare-area view, these positions correspond to identical spare records for NAND pages 1, 4, and 5 and all-`0xFF` records for pages 6 and 7 of USB sector 0. The file is the before sample. A paired after dump is needed to identify what changed on the DS Linker.
+
+SHA-256 of `shared_dslinker.bin` is `66cb7c14f47246135ea4c737831a03d5e91324f3b8d238029386d35df61cf853`.
+
 ### Banner-only write verified on hardware
 
 Apache Thunder used the banner-only build on a working N-Card and confirmed that the DS displayed the new banner and the card continued to boot fully. The first banner copy changed. The second copy's role remains unverified. [Banner-only build and hardware notes](compiled/write-enabled/banner-only/#hardware-result)
