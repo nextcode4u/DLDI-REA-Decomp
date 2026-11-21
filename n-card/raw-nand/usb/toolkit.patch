@@ -1,11 +1,40 @@
 diff --git a/source/main.c b/source/main.c
-index 7138d36..5e3dbeb 100644
+index 7138d36..947743e 100644
 --- a/source/main.c
 +++ b/source/main.c
 @@ -35,0 +36,2 @@
 +#include "boot-repair.h"
 +#include "nrio_raw_dldi.h"
-@@ -53,0 +56,60 @@ static void exit_to_loader(void) {
+@@ -53,0 +56,89 @@ static void exit_to_loader(void) {
++static bool wait_for_cart(const DISC_INTERFACE *io) {
++  if (memcmp(&io->ioType, "NRWR", 4)) {
++    printf(UI_COLOR_ERROR "Toolkit DLDI missing.\n");
++    exit_to_loader();
++    return false;
++  }
++
++  consoleClear();
++  printf("N-Card Recovery Toolkit\n\n"
++         "Insert N-Card in Slot-1.\n"
++         "A: detect   B: exit\n");
++  while (1) {
++    swiWaitForVBlank();
++    scanKeys();
++    uint32_t down = keysDown();
++    if (down & KEY_B)
++      return false;
++    if (!(down & KEY_A))
++      continue;
++    if (io->startup() && io->isInserted())
++      return true;
++    io->shutdown();
++    consoleClear();
++    printf("N-Card did not respond.\n\n"
++           "Check the cart in Slot-1.\n"
++           "A: retry   B: exit\n");
++  }
++}
++
 +static const char *const mode_names[] = {
 +  [NRIO_RAW_MAIN_READ] = "Main: read only",
 +  [NRIO_RAW_SPARE_READ] = "Spare: read only",
@@ -66,26 +95,28 @@ index 7138d36..5e3dbeb 100644
 +  }
 +}
 +
-@@ -86,6 +147,0 @@ int main(void) {
+@@ -86,6 +176,0 @@ int main(void) {
 -  tusb_rhport_init_t dev_init = {
 -    .role = TUSB_ROLE_DEVICE,
 -    .speed = TUSB_SPEED_AUTO
 -  };
 -  bool usb_init_status = !isDSiMode() && tusb_init(BOARD_TUD_RHPORT, &dev_init);
 -
-@@ -97,4 +153,3 @@ int main(void) {
+@@ -97 +182,2 @@ int main(void) {
 -  ui_show_chip_id();
--
++  if (!wait_for_cart(dldiGetInternal()))
++    return 0;
+@@ -99,2 +185,3 @@ int main(void) {
 -  if (!usb_init_status) {
 -    printf(UI_COLOR_ERROR "Could not initialize USB!\n");
 +  enum nrio_raw_mode mode = choose_mode();
 +  if (mode == NRIO_RAW_TABLE_REPAIR) {
 +    boot_repair();
-@@ -103,2 +158 @@ int main(void) {
+@@ -103,2 +190 @@ int main(void) {
 -
 -  if (!msc_dldi_initialize()) {
 +  if (!msc_dldi_initialize(mode)) {
-@@ -109 +163,12 @@ int main(void) {
+@@ -109 +195,12 @@ int main(void) {
 -  printf(UI_COLOR_INFO "Ready. Press START to exit.\n");
 +  tusb_rhport_init_t dev_init = {
 +    .role = TUSB_ROLE_DEVICE,
@@ -100,7 +131,7 @@ index 7138d36..5e3dbeb 100644
 +
 +  printf(UI_COLOR_INFO "Ready. Eject before START.\n");
 diff --git a/source/msc.c b/source/msc.c
-index 579fa97..b7cd879 100644
+index 579fa97..51ba458 100644
 --- a/source/msc.c
 +++ b/source/msc.c
 @@ -30,0 +31 @@
@@ -116,8 +147,10 @@ index 579fa97..b7cd879 100644
 -  if (memcmp(&io->ioType, "NRWR", 4)) {
 +  raw_driver = !memcmp(&io->ioType, "NRWR", 4);
 +  if (!raw_driver) {
-@@ -49 +49,0 @@ ITCM_CODE bool msc_dldi_initialize(void) {
+@@ -49,2 +50 @@ ITCM_CODE bool msc_dldi_initialize(void) {
 -#endif
+-  if (!io->startup() || !io->isInserted())
++  if (!io->isInserted())
 @@ -53 +52,0 @@ ITCM_CODE bool msc_dldi_initialize(void) {
 -  raw_driver = !memcmp(&io->ioType, "NRWR", 4);
 @@ -54,0 +54,5 @@ ITCM_CODE bool msc_dldi_initialize(void) {

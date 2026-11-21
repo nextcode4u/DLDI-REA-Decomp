@@ -25,9 +25,9 @@ static bool has_data(const uint8_t *bytes, size_t size)
     return false;
 }
 
-static bool start_view(const DISC_INTERFACE *io, uint32_t mode, struct nrio_raw_info *info)
+static bool select_view(const DISC_INTERFACE *io, uint32_t mode, struct nrio_raw_info *info)
 {
-    return io->startup() && io->isInserted() && io->readSectors(NRIO_RAW_MODE_LBA, 0, &mode) &&
+    return io->isInserted() && io->readSectors(NRIO_RAW_MODE_LBA, 0, &mode) &&
            io->readSectors(NRIO_RAW_INFO_LBA, 0, info) && info->version == NRIO_RAW_ABI_VERSION;
 }
 
@@ -108,9 +108,9 @@ void boot_repair(void)
     const uint32_t secondary_lba = NRIO_RAW_SECONDARY_TABLE / SECTOR_BYTES;
     const uint32_t table_sectors = NRIO_RAW_TABLE_BYTES / SECTOR_BYTES;
 
-    if (memcmp(&io->ioType, "NRWR", 4) || !start_view(io, NRIO_RAW_SPARE_READ, &spare_info) ||
-        !io->readSectors(0, 1, plan.expected_spare) || !io->shutdown() ||
-        !start_view(io, NRIO_RAW_MAIN_READ, &main_info) || main_info.nand_id != spare_info.nand_id ||
+    if (memcmp(&io->ioType, "NRWR", 4) || !select_view(io, NRIO_RAW_SPARE_READ, &spare_info) ||
+        !io->readSectors(0, 1, plan.expected_spare) || !io->shutdown() || !io->startup() ||
+        !select_view(io, NRIO_RAW_MAIN_READ, &main_info) || main_info.nand_id != spare_info.nand_id ||
         main_info.sectors <= FIRST_UDISK_OFFSET / SECTOR_BYTES || main_info.sectors > UINT32_MAX / SECTOR_BYTES) {
         printf("Could not read cart geometry.\n");
         return;
@@ -142,7 +142,7 @@ void boot_repair(void)
     if (!approve_repair()) return;
 
     printf("\nRewriting boot erase block.\n");
-    if (!io->shutdown() || !start_view(io, NRIO_RAW_TABLE_REPAIR, &repair_info) ||
+    if (!io->shutdown() || !io->startup() || !select_view(io, NRIO_RAW_TABLE_REPAIR, &repair_info) ||
         repair_info.nand_id != main_info.nand_id || repair_info.sectors != main_info.sectors ||
         !repair_info.workspace_bytes || repair_info.workspace_bytes > sizeof(raw_workspace) ||
         !io->readSectors(NRIO_RAW_WORKSPACE_LBA, sizeof(raw_workspace), raw_workspace) ||

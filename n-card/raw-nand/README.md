@@ -6,6 +6,8 @@ Use one [N-Card Recovery Toolkit `.nds`](compiled/write-enabled/nrio-raw-toolkit
 
 ### DS mode menu
 
+At the first screen, make sure the target N-Card is in Slot-1 and press **A** to detect it. If detection fails, press **A** to retry or **B** to exit. The toolkit opens the mode menu after detecting the NAND.
+
 On a DS or DS Lite with the Slot-2 USB writer, choose a mode with **Up/Down**, then press **A**. To enable a write mode, hold **L + R** and press **A** again. Connect USB after selecting. Eject the disk on the PC and disconnect the USB cable before pressing **START**. Relaunch the same `.nds` to choose a different mode.
 
 | Mode | Operation |
@@ -99,7 +101,7 @@ Apache reported slightly faster boot after the change and saw no SRAM errors whe
 
 ## Recovery instructions
 
-An unbootable N-Card requires a way to launch the NRIO app independently of the cart. See [Apache Thunder’s DS Lite test setup](#launching-the-tools-with-an-unbootable-card).
+For an unbootable N-Card, start the console with the target cart removed and launch `nrio-raw-toolkit.nds` through a separate homebrew launcher. Insert the target after power-on, then press **A** at the toolkit's detection screen. This keeps cartridge detection and boot-table repair independent of the target cart's ability to boot. [Apache Thunder’s DS Lite test setup](#launching-the-tools-with-an-unbootable-card)
 
 1. **Back up both NAND views.** With the N-Card in Slot-1 and the USB writer in Slot-2, launch the toolkit in **Main: read only** and save a full disk image on the PC. Relaunch in **Spare: read only** and save a separate image. Cancel any prompt to initialize or format either disk. Record the card model and reported sector counts.
 2. **Check how far the cart boots.** Record whether the DS menu shows the banner, whether launching the cart reaches uDisk or a white screen, and whether the [USB Safe Block shortcut](#boot-layout-notes) reaches the updater on carts with that layout. A working banner can return before uDisk boots, as it did in the [ExpressCard recovery](#full-boot-restored-on-the-expresscard).
@@ -124,7 +126,7 @@ Apache Thunder performed the hardware tests below and provided the recovery obse
 
 ### Launching the tools with an unbootable card
 
-Apache Thunder used HaxxStation and DS Download Play to launch the NRIO `.nds` tools on a DS Lite during recovery. The target N-Card was absent at power-on and inserted into Slot-1 after startup. This let the NRIO tools access the target during stages when the cart itself could not boot.
+Apache Thunder used HaxxStation and DS Download Play to launch the NRIO `.nds` tools on a DS Lite during recovery. He powered on with the target N-Card removed and inserted it into Slot-1 after startup, before entering Download Play. This let the NRIO tools access the target during stages when the cart itself could not boot. The current toolkit prompts for cartridge detection on launch and can retry before opening the mode menu.
 
 Apache also launched a separate copy of uDisk through Download Play to reach XMENU and run the XuluMenu installer. With the USB writer inserted, holding **SELECT while uDisk starts** skipped the USB/Menu selection screen and opened XMENU directly.
 
