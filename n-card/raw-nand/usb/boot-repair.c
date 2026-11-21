@@ -3,7 +3,6 @@
 #include <string.h>
 
 #include <nds.h>
-#include <nds/arm9/dldi.h>
 
 #include "boot-repair.h"
 #include "session-log.h"
@@ -26,10 +25,9 @@ static bool has_data(const uint8_t *bytes, size_t size)
     return false;
 }
 
-static bool select_view(const DISC_INTERFACE *io, uint32_t mode, struct nrio_raw_info *info)
+static bool select_view(enum nrio_raw_mode mode, struct nrio_raw_info *info)
 {
-    return io->isInserted() && io->readSectors(NRIO_RAW_MODE_LBA, 0, &mode) &&
-           io->readSectors(NRIO_RAW_INFO_LBA, 0, info) && info->version == NRIO_RAW_ABI_VERSION;
+    return nrio_recovery_select_mode(mode) && nrio_recovery_get_info(info);
 }
 
 static bool known_shared_spare(const uint8_t *spare)
@@ -49,20 +47,20 @@ static uint32_t block_address(uint32_t image_offset)
     return read_le32(plan.table + (image_offset / ROM_BLOCK_BYTES) * sizeof(uint32_t));
 }
 
-static bool has_mapped_code(const DISC_INTERFACE *io, uint32_t offset)
+static bool has_mapped_code(uint32_t offset)
 {
     uint32_t address = block_address(offset) + offset % ROM_BLOCK_BYTES;
-    return io->readSectors(address / SECTOR_BYTES, 1, sector) && has_data(sector, 16);
+    return nrio_recovery_read(address / SECTOR_BYTES, 1, sector) && has_data(sector, 16);
 }
 
-static bool live_udisk(const DISC_INTERFACE *io, uint32_t capacity)
+static bool live_udisk(uint32_t capacity)
 {
     uint32_t first = block_address(0);
     if (first < FIRST_UDISK_OFFSET || first % ROM_BLOCK_BYTES || first >= capacity) {
         session_log("Invalid first uDisk block\nat 0x%lx.", (unsigned long)first);
         return false;
     }
-    if (!io->readSectors(first / SECTOR_BYTES, 1, sector)) {
+    if (!nrio_recovery_read(first / SECTOR_BYTES, 1, sector)) {
         session_log("Could not read uDisk header.");
         return false;
     }
@@ -94,7 +92,7 @@ static bool live_udisk(const DISC_INTERFACE *io, uint32_t capacity)
         }
         previous = address;
     }
-    if (!has_mapped_code(io, arm9) || !has_mapped_code(io, arm7)) {
+    if (!has_mapped_code(arm9) || !has_mapped_code(arm7)) {
         session_log("Mapped ARM9 or ARM7 code\nis missing or unreadable.");
         return false;
     }
@@ -122,16 +120,19 @@ static bool approve_repair(void)
 
 void boot_repair(bool check_only)
 {
-    const DISC_INTERFACE *io = dldiGetInternal();
     struct nrio_raw_info spare_info, main_info, repair_info;
     const uint32_t primary_lba = NRIO_RAW_PRIMARY_TABLE / SECTOR_BYTES;
     const uint32_t secondary_lba = NRIO_RAW_SECONDARY_TABLE / SECTOR_BYTES;
     const uint32_t table_sectors = NRIO_RAW_TABLE_BYTES / SECTOR_BYTES;
 
     session_log("Reading main and spare geometry.");
-    if (memcmp(&io->ioType, "NRWR", 4) || !select_view(io, NRIO_RAW_SPARE_READ, &spare_info) ||
-        !io->readSectors(0, 1, plan.expected_spare) || !io->shutdown() || !io->startup() ||
-        !select_view(io, NRIO_RAW_MAIN_READ, &main_info) || main_info.nand_id != spare_info.nand_id ||
+    if (!select_view(NRIO_RAW_SPARE_READ, &spare_info) || !nrio_recovery_read(0, 1, plan.expected_spare)) {
+        session_log("Could not read shared spare data.");
+        return;
+    }
+    nrio_recovery_shutdown();
+    if (!nrio_recovery_startup() || !select_view(NRIO_RAW_MAIN_READ, &main_info) ||
+        main_info.nand_id != spare_info.nand_id ||
         main_info.sectors <= FIRST_UDISK_OFFSET / SECTOR_BYTES || main_info.sectors > UINT32_MAX / SECTOR_BYTES) {
         session_log("Could not read cart geometry.");
         return;
@@ -139,13 +140,13 @@ void boot_repair(bool check_only)
     session_log("NAND ID %08lx, %lu sectors.", (unsigned long)main_info.nand_id,
                 (unsigned long)main_info.sectors);
     session_log("Checking early boot records.");
-    if (!known_shared_spare(plan.expected_spare) || !io->readSectors(0, 1, sector) || !has_data(sector, sizeof(sector))) {
+    if (!known_shared_spare(plan.expected_spare) || !nrio_recovery_read(0, 1, sector) || !has_data(sector, sizeof(sector))) {
         session_log("Early boot data is missing\nor uses an unknown layout.");
         return;
     }
     // Stage 2 skips table candidates preceded by the QAFE marker.
     session_log("Checking table at 0x40000\nand its mapped uDisk image.");
-    if (!io->readSectors(secondary_lba - 1, 1, sector)) {
+    if (!nrio_recovery_read(secondary_lba - 1, 1, sector)) {
         session_log("Could not read table marker.");
         return;
     }
@@ -153,16 +154,16 @@ void boot_repair(bool check_only)
         session_log("Stage 2 would skip this table.");
         return;
     }
-    if (!io->readSectors(secondary_lba, table_sectors, plan.table)) {
+    if (!nrio_recovery_read(secondary_lba, table_sectors, plan.table)) {
         session_log("Could not read secondary table.");
         return;
     }
-    if (!live_udisk(io, main_info.sectors * SECTOR_BYTES)) return;
+    if (!live_udisk(main_info.sectors * SECTOR_BYTES)) return;
 
     session_log("uDisk starts at 0x%lx.\nComparing primary table.", (unsigned long)block_address(0));
     uint32_t differing_sectors = 0;
     for (uint32_t i = 0; i < table_sectors; ++i) {
-        if (!io->readSectors(primary_lba + i, 1, sector)) {
+        if (!nrio_recovery_read(primary_lba + i, 1, sector)) {
             session_log("Could not read primary table.");
             return;
         }
@@ -184,13 +185,15 @@ void boot_repair(bool check_only)
     }
 
     session_log("Repair confirmed.\nChecking live table and spare\ndata before erase.");
-    if (!io->shutdown() || !io->startup() || !select_view(io, NRIO_RAW_TABLE_REPAIR, &repair_info) ||
+    nrio_recovery_shutdown();
+    if (!nrio_recovery_startup() || !select_view(NRIO_RAW_TABLE_REPAIR, &repair_info) ||
         repair_info.nand_id != main_info.nand_id || repair_info.sectors != main_info.sectors ||
         !repair_info.workspace_bytes || repair_info.workspace_bytes > sizeof(raw_workspace) ||
-        !io->readSectors(NRIO_RAW_WORKSPACE_LBA, sizeof(raw_workspace), raw_workspace) ||
-        !io->readSectors(NRIO_RAW_REPAIR_TABLE_LBA, 0, &plan)) {
+        !nrio_recovery_bind_workspace(raw_workspace, sizeof(raw_workspace)) ||
+        !nrio_recovery_repair_table(&plan)) {
         struct nrio_raw_write_error error;
-        if (io->readSectors(NRIO_RAW_WRITE_ERROR_LBA, 0, &error) && error.stage) {
+        nrio_recovery_get_write_error(&error);
+        if (error.stage) {
             session_log("Repair failed.");
             session_log_write_error(&error);
         } else {

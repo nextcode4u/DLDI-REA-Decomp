@@ -21,7 +21,7 @@ OBJCOPY := $(DEVKITARM)/bin/arm-eabi-objcopy$(EXE)
 
 BUILD := build
 CFLAGS := -march=armv4t -marm -mthumb-interwork -Os -std=gnu99 -Wall -Wextra \
-          -ffreestanding -fomit-frame-pointer -fPIC
+          -ffreestanding -fomit-frame-pointer -fPIC -ffunction-sections -fdata-sections
 CPPFLAGS := -DARM9 -isystem "$(call tool_path,$(DEVKITPRO)/libnds/include)" \
             -isystem "$(call tool_path,$(DEVKITARM)/arm-eabi/include)"
 GCC_SEARCH := -B"$(call tool_path,$(GCC_LIBEXEC))/" -B"$(call tool_path,$(DEVKITARM)/bin)/"
@@ -38,10 +38,10 @@ $(BUILD)/toolkit/header.o: source/header.S Makefile
 	@mkdir -p "$(@D)"
 	"$(AS)" "$<" -o "$@"
 
-TOOLKIT_OBJECTS := $(addprefix $(BUILD)/toolkit/,header.o interface.o nand.o restore.o)
+DLDI_OBJECTS := $(addprefix $(BUILD)/toolkit/,header.o interface.o nand.o)
 
-$(BUILD)/nrio-raw-toolkit.elf: $(TOOLKIT_OBJECTS) linker.ld
-	"$(LD)" -T linker.ld -o "$@" $(TOOLKIT_OBJECTS)
+$(BUILD)/nrio-raw-toolkit.elf: $(DLDI_OBJECTS) linker.ld
+	"$(LD)" --gc-sections -T linker.ld -o "$@" $(DLDI_OBJECTS)
 
 $(BUILD)/%.dldi: $(BUILD)/%.elf
 	"$(OBJCOPY)" -O binary "$<" "$@"
@@ -49,4 +49,4 @@ $(BUILD)/%.dldi: $(BUILD)/%.elf
 clean:
 	rm -rf "$(BUILD)"
 
--include $(TOOLKIT_OBJECTS:.o=.d)
+-include $(DLDI_OBJECTS:.o=.d)

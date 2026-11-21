@@ -40,7 +40,13 @@ Apache Thunder tested the C build on a physical N-Card using GodMode9i. It mount
 
 ## Physical NAND recovery
 
-The [raw NAND recovery toolkit](raw-nand/) uses one DS app and an embedded multi-mode DLDI to access physical NAND from sector 0. See the [recovery instructions](raw-nand/#recovery-instructions) for imaging and choosing a repair path, and the [hardware findings](raw-nand/#hardware-results) for Apache Thunder’s test results.
+The [raw NAND recovery toolkit](raw-nand/) uses one DS app with directly linked recovery code to access physical NAND from sector 0. See the [recovery instructions](raw-nand/#recovery-instructions) and [Apache Thunder’s hardware findings](raw-nand/#hardware-results).
+
+## Upstream integration
+
+For standard filesystem reads and writes, start with the [filesystem DLDI callbacks](source/dldi/) and the [flash translation layer](source/ftl/). These sources use the driver's existing NAND page programming and mapping path. The raw toolkit's erase-block restore code is specific to its physical NAND recovery modes. The historical build uses devkitARM r20 for byte matching. The Windows executable suffix and path handling support the r20 Windows archive under WSL.
+
+The reconstructed driver has no project-wide license file in this repository. The [third-party notices](raw-nand/compiled/licenses/) identify components distributed with the recovery app. Confirm the reconstructed sources' license and provenance with the project maintainers before upstream integration.
 
 ## Source tree
 

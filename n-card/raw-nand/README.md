@@ -2,7 +2,7 @@
 
 ## N-Card Recovery Toolkit
 
-Use one [N-Card Recovery Toolkit `.nds`](compiled/write-enabled/nrio-raw-toolkit.nds) for main-area and spare-area access. It includes the [multi-mode raw DLDI](compiled/write-enabled/nrio-raw-toolkit.dldi) and starts with main-area read-only selected. The standalone DLDI also starts read-only and uses the private mode command for other modes.
+Use one [N-Card Recovery Toolkit `.nds`](compiled/write-enabled/nrio-raw-toolkit.nds) for main-area and spare-area access. It starts with main-area read-only selected and links the recovery backend directly. The [standalone raw DLDI](compiled/write-enabled/nrio-raw-toolkit.dldi) exposes physical main-area reads through the standard DLDI interface. For filesystem access through libfat, use the [NRIO filesystem driver](../compiled-from-c/).
 
 ### DS mode menu
 
@@ -77,15 +77,24 @@ The protected mode reads the full main area and rejects every write touching the
 
 ## USB integration and rebuild
 
-The toolkit queries the `NRWR` driver for physical capacity and binds the erase-block workspace when needed. It reports write protection in read-only modes, rejects out-of-range USB requests before calling DLDI, and shows the stage and NAND page of a failed write on the DS screen. The embedded driver's first magic byte is `0xEE` so launchers using standard DLDI signature matching leave it in place. The standalone DLDI uses the standard magic for patching.
+The DS app calls the [recovery backend](source/recovery.h) directly to select a mode, query capacity, bind the erase-block workspace, retrieve write diagnostics, or repair a boot table. USB sector requests use the backend's sector functions. The standalone [DLDI read callback](source/interface.c) accepts only physical main-area sectors within the detected capacity. The [NAND transport](source/nand.c) provides the common card probe and main-area reads.
 
-- [Apache Thunder fork patch](usb/fork.patch), built against [b9b781b](https://github.com/ApacheThunder/nrio-usb-disk/tree/b9b781bf5deec5096cbc517432878430ac0e58c6).
+Build the standalone raw driver with `make DEVKITPRO=/path/to/r20-sdk`. It uses a 4 KiB DLDI slot. For the `.nds`, use BlocksDS and a clean checkout of [Apache Thunder's nrio-usb-disk fork at b9b781b](https://github.com/ApacheThunder/nrio-usb-disk/tree/b9b781bf5deec5096cbc517432878430ac0e58c6). Run the following from `n-card/raw-nand` with `usb_checkout` set to that checkout's absolute path.
 
-Build `build/nrio-raw-toolkit.dldi` from this folder with `make DEVKITPRO=/path/to/r20-sdk`. To rebuild the menu app, use the pinned Apache Thunder fork linked above. Apply `usb/fork.patch` with `git apply` and then `usb/toolkit.patch` with `git apply --unidiff-zero`. Copy `usb/raw-dldi.h` to `source/nrio_raw_dldi.h` and copy `usb/boot-repair.c`, `usb/boot-repair.h`, `usb/session-log.c`, and `usb/session-log.h` to `source/` in the USB project. Build the USB app with BlocksDS using `make NRIO_RAW_REQUIRED=1`. Run `dldipatch patch nrio-raw-toolkit.dldi nrio-usb-disk.nds` with the built files, then locate the embedded DLDI magic with ID `NRWR` at header offset `0x60` and change its first byte to `0xEE` for launcher protection. The standalone DLDI keeps standard magic for patching and requires a 16 KiB DLDI slot. [Third-party notices](compiled/licenses/)
+```bash
+git -C "$usb_checkout" apply --unidiff-zero "$PWD/usb/toolkit.patch"
+mkdir -p "$usb_checkout/source/recovery_nand" "$usb_checkout/source/card"
+cp source/{nand.c,recovery.c,restore.c,raw_nand.h,recovery.h,banner_plan.h} "$usb_checkout/source/recovery_nand/"
+cp ../source/card/nand_ecc.h "$usb_checkout/source/card/"
+cp usb/{boot-repair.c,boot-repair.h,session-log.c,session-log.h} "$usb_checkout/source/"
+make -C "$usb_checkout"
+```
+
+The build produces `nrio-usb-disk.nds` and `build/nrio-usb-disk.elf`. The ROM is ready to launch as built. [Third-party notices](compiled/licenses/)
 
 ## Verification
 
-`python3 check_transport.py` runs the relocated DLDI extracted from the toolkit `.nds` in Unicorn. It checks the USB mode policies, including the lock on mode changes after selection or sector I/O. It also checks bounds, both erase geometries, bad-marker refusal, and preservation across erase-block boundaries. It injects erase failures, program failures, and readback mismatches to check that the driver rejects later writes while allowing reads. Same-cart tests check that changed source or spare data prevents erase and that only the primary table and its ECC change after a successful repair. The combined DS app still needs a physical hardware test. The hardware observations below were made with earlier single-mode builds.
+`python3 check_transport.py` tests the standalone DLDI in Unicorn, including range checks and rejection of the former reserved-sector commands. With `pyelftools` installed, pass `--app-elf "$usb_checkout/build/nrio-usb-disk.elf"` to also test the directly linked recovery code. The recovery tests cover mode locking, both erase geometries, bad markers, injected failures, and same-cart repair. Same-cart tests verify that changed source or spare data prevents erase and that the primary table and its ECC are the only changed data after a successful repair. The current DS app still needs a physical hardware test. The hardware observations below were made with earlier builds.
 
 ## Boot layout notes
 

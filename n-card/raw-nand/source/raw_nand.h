@@ -3,8 +3,6 @@
 
 #include <nds.h>
 
-#include "../usb/raw-dldi.h"
-
 enum {
     SECTOR_SIZE = 512,
     SECTORS_PER_PAGE = 4,
@@ -14,16 +12,19 @@ enum {
     PAGE_RECORD_SIZE = PAGE_SIZE + SPARE_SIZE,
 };
 
-bool nand_read_id(u32 *id);
+struct nand_geometry {
+    u32 id;
+    u32 sectors;
+    u32 pages_per_block;
+};
+
+bool nand_probe(struct nand_geometry *geometry);
+bool nand_read_main(u32 sector, u32 count, u8 *output);
 bool nand_load_page(u32 page, bool spare);
 bool nand_read_sector(u32 column, u8 *buffer);
 bool nand_read_spare(u8 *buffer);
 
 bool nand_erase_block(u32 page);
 bool nand_program_page(u32 page, const u8 *record);
-bool restore_sectors(u32 sector, u32 count, const u8 *buffer, u32 pages_per_block, u8 *workspace,
-                     struct nrio_raw_write_error *error, enum nrio_raw_mode mode);
-bool restore_boot_table(const struct nrio_raw_table_plan *plan, u32 pages_per_block, u8 *workspace,
-                        struct nrio_raw_write_error *error);
 
 #endif

@@ -4,9 +4,9 @@ nrio_raw_header:
     .word 0xbf8da5ed
     .asciz " Chishm"
 .global nrio_raw_allocation
-    .set nrio_raw_allocation, 16384
-    .byte 1, 14, 0x0c, 0        @ Version, image size, FIX_GOT | FIX_BSS, allocation
-    .asciz "N-Card Recovery Toolkit"
+    .set nrio_raw_allocation, 4096
+    .byte 1, 12, 0x0c, 0        @ Version, image size, FIX_GOT | FIX_BSS, allocation
+    .asciz "N-Card Raw Read"
     .space 0x40 - (. - nrio_raw_header)
     .word nrio_raw_header, __bss_start
     .word __glue_start, __glue_start

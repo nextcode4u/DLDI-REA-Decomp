@@ -1,23 +1,16 @@
-#ifndef NRIO_RAW_DLDI_PROTOCOL_H
-#define NRIO_RAW_DLDI_PROTOCOL_H
+#ifndef NRIO_RAW_RECOVERY_H
+#define NRIO_RAW_RECOVERY_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
-#define NRIO_RAW_INFO_LBA UINT32_C(0xffffffff)
-#define NRIO_RAW_WORKSPACE_LBA UINT32_C(0xfffffffe)
-#define NRIO_RAW_WRITE_ERROR_LBA UINT32_C(0xfffffffd)
-#define NRIO_RAW_MODE_LBA UINT32_C(0xfffffffc)
-#define NRIO_RAW_REPAIR_TABLE_LBA UINT32_C(0xfffffffb)
-#define NRIO_RAW_ABI_VERSION UINT32_C(1)
 #define NRIO_RAW_WORKSPACE_BYTES (128u * (2048u + 64u))
 #define NRIO_RAW_PRIMARY_TABLE UINT32_C(0x8000)
 #define NRIO_RAW_SECONDARY_TABLE UINT32_C(0x40000)
 #define NRIO_RAW_TABLE_BYTES UINT32_C(0x4000)
 #define NRIO_RAW_SHARED_SPARE_BYTES UINT32_C(512)
 
-/* Private DLDI calls use count=0 for info and count=workspace bytes for binding. */
 struct nrio_raw_info {
-    uint32_t version;
     uint32_t sectors;
     uint32_t workspace_bytes;
     uint32_t nand_id;
@@ -34,7 +27,7 @@ enum nrio_raw_write_stage {
     NRIO_RAW_WRITE_TABLE_SOURCE,
 };
 
-/* Toolkit mode selection is a one-time private read with count=0. */
+/* Select the view once, before processing sector I/O. */
 enum nrio_raw_mode {
     NRIO_RAW_MAIN_READ,
     NRIO_RAW_SPARE_READ,
@@ -55,5 +48,20 @@ struct nrio_raw_write_error {
     uint32_t page;
     uint32_t detail;
 };
+
+bool nrio_recovery_startup(void);
+void nrio_recovery_shutdown(void);
+bool nrio_recovery_select_mode(enum nrio_raw_mode mode);
+bool nrio_recovery_get_info(struct nrio_raw_info *info);
+bool nrio_recovery_bind_workspace(void *buffer, uint32_t size);
+void nrio_recovery_get_write_error(struct nrio_raw_write_error *error);
+bool nrio_recovery_repair_table(const struct nrio_raw_table_plan *plan);
+bool nrio_recovery_read(uint32_t sector, uint32_t count, void *buffer);
+bool nrio_recovery_write(uint32_t sector, uint32_t count, const void *buffer);
+
+bool restore_sectors(uint32_t sector, uint32_t count, const uint8_t *buffer, uint32_t pages_per_block,
+                     uint8_t *workspace, struct nrio_raw_write_error *error, enum nrio_raw_mode mode);
+bool restore_boot_table(const struct nrio_raw_table_plan *plan, uint32_t pages_per_block, uint8_t *workspace,
+                        struct nrio_raw_write_error *error);
 
 #endif

@@ -1,5 +1,6 @@
 #include "raw_nand.h"
 #include "banner_plan.h"
+#include "recovery.h"
 #include "../../source/card/nand_ecc.h"
 
 static u32 load_word(const u8 *in)

@@ -1,5 +1,5 @@
 #include "session-log.h"
-#include "nrio_raw_dldi.h"
+#include "recovery_nand/recovery.h"
 
 #include <stdarg.h>
 #include <stdio.h>
