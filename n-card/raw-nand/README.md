@@ -98,13 +98,15 @@ Apache Thunder reported recovering a second N-Card. The DS menu photograph shows
 
 ### Shared block and early NAND writes
 
-Apache Thunder had to **deliberately put each card into a specific bricked state** before the custom uDisk updater could write to the region at main NAND offset `0x0000`. The goal was to restore the block table at `0x8000`. Apache confirmed that two N-Cards recovered fully. Apache observed that the area they called the **shared block** was mostly `0xFF` when the write succeeded. The exact changes that produced the required state and the reason the updater could write afterward remain unknown.
+Apache Thunder had to **deliberately put each card into a specific bricked state** before the custom uDisk updater could write to the region at main NAND offset `0x0000`. The goal was to restore the block table at `0x8000`. Apache confirmed that two N-Cards recovered fully. Apache observed that the area they called the **shared block** was mostly `0xFF` when the write succeeded. Why the updater could write in that state remains unknown.
 
 Apache provided `shared_dslinker.bin` from a third, partially bricked DS Linker before attempting to reproduce that state. The file has 135 `0xFF` bytes out of 512, including the entire range `0x180`–`0x1FF`. It also contains three identical 64-byte records at file offsets `0x40`, `0x100`, and `0x140`. In the packed spare-area view, these positions correspond to identical spare records for NAND pages 1, 4, and 5 and all-`0xFF` records for pages 6 and 7 of USB sector 0.
 
 SHA-256 of `shared_dslinker.bin` is `66cb7c14f47246135ea4c737831a03d5e91324f3b8d238029386d35df61cf853`.
 
-In the follow-up test, Apache reported that the bricked shared block read entirely as `0xFF`. HxD shows all bytes in spare-view USB sectors 0 and 1 (`0x000`–`0x3FF`) as `0xFF`, covering the spare records for physical NAND pages 0–15. This readback covers spare data only. The full extent of the affected NAND region and the updater result for this trial remain unconfirmed.
+For the follow-up test, Apache said they wrote a regular NAND image with its first byte (image offset `0x0000`) changed to lowercase ASCII `h` (`0x68`). Apache made that change because nrioTool had returned incorrect dumps without it. The reason this byte affected the dump remains unknown.
+
+The bricked shared block then read entirely as `0xFF` in the spare-area view. HxD shows all bytes in spare-view USB sectors 0 and 1 (`0x000`–`0x3FF`) as `0xFF`, covering the spare records for physical NAND pages 0–15. The `0x68` edit was in the image Apache wrote. The `0xFF` bytes were observed in the separate spare-area readback. The full extent of the affected NAND region and the updater result for this trial remain unconfirmed.
 
 For a paired capture, use the [spare-area reader](compiled/nrio-raw-spare-readonly.nds) to save the same range before bricking, in the bricked state, and after the updater attempt. Compare the images in 64-byte records and record which page records changed, which updater and target offset were used, and whether the banner and uDisk boot worked at each stage. Intentionally clearing the shared block can leave the card unbootable.
 
