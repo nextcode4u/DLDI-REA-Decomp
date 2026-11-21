@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
@@ -21,7 +22,7 @@ from inspect_boot import (
 
 
 class RecoveryTool:
-    def __init__(self, root):
+    def __init__(self, root, log_directory=None):
         self.root = root
         root.title("N-Card Recovery Toolkit")
         root.minsize(640, 480)
@@ -32,8 +33,10 @@ class RecoveryTool:
         tabs.grid(row=0, column=0, sticky="nsew", padx=12, pady=(12, 6))
         recovery = ttk.Frame(tabs, padding=12)
         banner = ttk.Frame(tabs, padding=12)
+        log_tab = ttk.Frame(tabs, padding=12)
         tabs.add(recovery, text="Inspect and export")
         tabs.add(banner, text="Banner repair")
+        tabs.add(log_tab, text="Session log")
 
         recovery.columnconfigure(1, weight=1)
         recovery.rowconfigure(4, weight=1)
@@ -61,12 +64,58 @@ class RecoveryTool:
         ttk.Button(banner, text="Prepare banner files", command=self.prepare_banner).grid(
             row=4, column=0, columnspan=3, sticky="w")
 
+        log_tab.columnconfigure(0, weight=1)
+        log_tab.rowconfigure(0, weight=1)
+        self.log_view = ScrolledText(log_tab, width=76, height=16, wrap="word", state="disabled")
+        self.log_view.grid(row=0, column=0, sticky="nsew")
+        ttk.Button(log_tab, text="Save log copy…", command=self.save_log_copy).grid(
+            row=1, column=0, sticky="w", pady=(8, 0))
+
         footer = ttk.Frame(root, padding=(12, 0, 12, 10))
         footer.grid(row=1, column=0, sticky="ew")
         footer.columnconfigure(0, weight=1)
         self.status = tk.StringVar(value="Ready")
         ttk.Label(footer, textvariable=self.status, wraplength=455).grid(row=0, column=0, sticky="w")
         ttk.Button(footer, text="Open DS tools folder", command=self.open_ds_tools).grid(row=0, column=1, padx=(8, 0))
+        directory = log_directory if log_directory is not None else Path.home() / "N-Card Recovery Logs"
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        self.log_path = directory / f"nrio-{stamp}.txt"
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            self.log_path.touch(exist_ok=False)
+        except OSError as error:
+            self.log_path = None
+            self.log(f"Automatic log file unavailable: {error}")
+        self.log("N-Card Recovery Toolkit session started.")
+        if self.log_path is not None:
+            self.log(f"Automatic log: {self.log_path}")
+
+    def log(self, message):
+        stamp = datetime.now().astimezone().isoformat(timespec="seconds")
+        entry = f"{stamp} {message}\n"
+        if self.log_path is not None:
+            try:
+                with self.log_path.open("a", encoding="utf-8") as output:
+                    output.write(entry)
+            except OSError as error:
+                self.log_path = None
+                entry += f"{stamp} Automatic log file unavailable: {error}\n"
+        self.log_view.configure(state="normal")
+        self.log_view.insert("end", entry)
+        self.log_view.configure(state="disabled")
+        self.log_view.see("end")
+
+    def save_log_copy(self):
+        path = filedialog.asksaveasfilename(parent=self.root, initialfile="nrio-session.txt", defaultextension=".txt")
+        if not path:
+            return
+        try:
+            with Path(path).open("x", encoding="utf-8") as output:
+                output.write(self.log_view.get("1.0", "end-1c"))
+            self.status.set(f"Saved log copy to {path}")
+            self.log(f"Saved log copy to {path}")
+        except OSError as error:
+            self.show_error(error)
 
     def file_field(self, parent, row, label, value=None):
         if value is None:
@@ -95,14 +144,19 @@ class RecoveryTool:
         return path
 
     def show_error(self, error):
+        self.log(f"Error: {error}")
         self.status.set("Action failed")
         messagebox.showerror("N-Card Recovery Toolkit", str(error), parent=self.root)
 
     def inspect(self):
+        self.log("Inspecting target NAND dumps.")
         try:
             main = self.dump_file(self.main_dump, "target main dump")
             spare = self.dump_file(self.spare_dump, "target spare dump")
-            self.set_report(inspect_boot(main, spare))
+            self.log(f"Target main: {main}\nTarget spare: {spare}")
+            report = inspect_boot(main, spare)
+            self.set_report(report)
+            self.log(report)
             self.status.set("Inspection complete")
         except (OSError, ValueError) as error:
             self.set_report(str(error))
@@ -120,17 +174,24 @@ class RecoveryTool:
                 output_path.unlink(missing_ok=True)
                 raise
             self.status.set(f"Saved {output_path}")
+            self.log(f"Saved {len(data)} bytes to {output_path}")
+        else:
+            self.log(f"Export cancelled: {name}")
 
     def save_spare(self):
+        self.log("Exporting the 512-byte shared spare sector.")
         try:
             spare = self.dump_file(self.spare_dump, "target spare dump")
+            self.log(f"Source spare dump: {spare}")
             self.save_bytes("shared-spare-sector0.bin", read_prefix(spare, SPARE_SECTOR_SIZE))
         except (OSError, ValueError) as error:
             self.show_error(error)
 
     def export_table(self):
+        self.log("Exporting the 16 KiB secondary table at 0x40000 for review.")
         try:
             main = self.dump_file(self.main_dump, "target main dump")
+            self.log(f"Source main dump: {main}")
             table = read_main_dump(main, SECONDARY_TABLE + TABLE_SIZE)[SECONDARY_TABLE:]
             if len(set(table)) == 1:
                 raise ValueError("The secondary table region contains a single repeated byte.")
@@ -139,20 +200,26 @@ class RecoveryTool:
             self.show_error(error)
 
     def prepare_banner(self):
+        self.log("Preparing the banner app for the target spare snapshot.")
         try:
             target = self.dump_file(self.spare_dump, "target spare dump")
             donor_main = self.dump_file(self.donor_main, "donor main dump")
             donor_spare = self.dump_file(self.donor_spare, "donor spare dump")
+            self.log(f"Target spare: {target}\nDonor main: {donor_main}\nDonor spare: {donor_spare}")
             parent = filedialog.askdirectory(parent=self.root, title="Choose where to create banner-ready")
             if parent:
                 output_dir = Path(parent) / "banner-ready"
                 prepare_from_dumps(target, donor_main, donor_spare, default_template(), output_dir)
                 self.status.set(f"Created {output_dir / ARMED_ROM} and banner.bin")
+                self.log(self.status.get())
+            else:
+                self.log("Banner preparation cancelled.")
         except (OSError, ValueError) as error:
             self.show_error(error)
 
     def open_ds_tools(self):
         directory = Path(__file__).resolve().parent / "compiled" / "write-enabled"
+        self.log(f"Opening DS tools folder: {directory}")
         try:
             if sys.platform == "win32":
                 os.startfile(directory)

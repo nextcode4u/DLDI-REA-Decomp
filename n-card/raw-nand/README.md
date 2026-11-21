@@ -6,9 +6,9 @@ Use one [N-Card Recovery Toolkit `.nds`](compiled/write-enabled/nrio-raw-toolkit
 
 ### DS mode menu
 
-At the first screen, make sure the target N-Card is in Slot-1 and press **A** to detect it. If detection fails, press **A** to retry or **B** to exit. The toolkit opens the mode menu after detecting the NAND.
+At the first screen, make sure the target N-Card is in Slot-1 and press **A** to detect it. If detection fails, press **A** to retry or **B** to finish and export the log. The toolkit opens the mode menu after detecting the NAND.
 
-On a DS or DS Lite with the Slot-2 USB writer, choose a mode with **Up/Down**, then press **A**. To enable a write mode, hold **L + R** and press **A** again. Connect USB after selecting. Eject the disk on the PC and disconnect the USB cable before pressing **START**. Relaunch the same `.nds` to choose a different mode.
+On a DS or DS Lite with the Slot-2 USB writer, choose a mode with **Up/Down**, then press **A**. To enable a write mode, hold **L + R** and press **A** again. Connect USB after selecting. Eject the disk on the PC and disconnect the USB cable before pressing **START**. The toolkit then offers to export the session log. Relaunch the same `.nds` to choose a different mode.
 
 | Mode | Operation |
 | --- | --- |
@@ -21,6 +21,12 @@ On a DS or DS Lite with the Slot-2 USB writer, choose a mode with **Up/Down**, t
 | Repair primary boot table | On-console repair using the target cart's surviving uDisk mapping |
 
 The older single-mode binaries used in the hardware reports are available in the [archived revision](https://github.com/nextcode4u/DLDI-REA-Decomp/tree/0b09821d66c6e91f2a94383f055720258bcfd1fb/n-card/raw-nand/compiled).
+
+### Save a DS session log
+
+The screen reports cart detection, NAND geometry, repair checks, the first USB read and write, progress at each additional 8 MiB, and failures with their LBA or NAND page. A USB NAND session ends with read, write, and error counts. Table repair reports which checks passed or where it stopped.
+
+When **A: export log** appears after a repair, cancellation, or USB NAND session, press **A** and connect the Slot-2 USB writer to the PC. Copy `SESSION.TXT` from the **NRIO LOGS** drive. This read-only drive is generated in DS memory and uses a separate USB identity. Copy the log before exiting or turning off the DS. USB export of the DS log still needs a physical-cart test.
 
 ### Repair using only the target cart
 
@@ -41,6 +47,8 @@ On Windows, install Python 3 with Tcl/Tk, then double-click **Start Recovery Too
 3. For a banner repair, open **Banner repair**, select the compatible donor's main and spare dumps, and choose where to create `banner-ready`. Use the resulting `.nds` and payload with the [banner-only instructions](compiled/write-enabled/banner-only/).
 
 The desktop tool works on dump files. The DS app handles NAND access and [same-cart repair](#repair-using-only-the-target-cart).
+
+The Windows app saves a timestamped file under **N-Card Recovery Logs** in your user folder. The **Session log** tab shows the current session and lets you save a copy. The log records selected file paths, inspection results, exports, banner preparation, cancellations, and errors. To keep command-line output and errors, append `> nrio-session.txt 2>&1` to the command.
 
 ## Physical addressing
 
@@ -72,7 +80,7 @@ The toolkit queries the `NRWR` driver for physical capacity and binds the erase-
 
 - [Apache Thunder fork patch](usb/fork.patch), built against [b9b781b](https://github.com/ApacheThunder/nrio-usb-disk/tree/b9b781bf5deec5096cbc517432878430ac0e58c6).
 
-Build `build/nrio-raw-toolkit.dldi` from this folder with `make DEVKITPRO=/path/to/r20-sdk`. To rebuild the menu app, use the pinned Apache Thunder fork linked above. Apply `usb/fork.patch` with `git apply` and then `usb/toolkit.patch` with `git apply --unidiff-zero`. Copy `usb/raw-dldi.h` to `source/nrio_raw_dldi.h` and `usb/boot-repair.c` and `usb/boot-repair.h` to `source/` in the USB project. Build the USB app with BlocksDS using `make NRIO_RAW_REQUIRED=1`. Run `dldipatch patch nrio-raw-toolkit.dldi nrio-usb-disk.nds` with the built files, then locate the embedded DLDI magic with ID `NRWR` at header offset `0x60` and change its first byte to `0xEE` for launcher protection. The standalone DLDI keeps standard magic for patching and requires a 16 KiB DLDI slot. [Third-party notices](compiled/licenses/)
+Build `build/nrio-raw-toolkit.dldi` from this folder with `make DEVKITPRO=/path/to/r20-sdk`. To rebuild the menu app, use the pinned Apache Thunder fork linked above. Apply `usb/fork.patch` with `git apply` and then `usb/toolkit.patch` with `git apply --unidiff-zero`. Copy `usb/raw-dldi.h` to `source/nrio_raw_dldi.h` and copy `usb/boot-repair.c`, `usb/boot-repair.h`, `usb/session-log.c`, and `usb/session-log.h` to `source/` in the USB project. Build the USB app with BlocksDS using `make NRIO_RAW_REQUIRED=1`. Run `dldipatch patch nrio-raw-toolkit.dldi nrio-usb-disk.nds` with the built files, then locate the embedded DLDI magic with ID `NRWR` at header offset `0x60` and change its first byte to `0xEE` for launcher protection. The standalone DLDI keeps standard magic for patching and requires a 16 KiB DLDI slot. [Third-party notices](compiled/licenses/)
 
 ## Verification
 

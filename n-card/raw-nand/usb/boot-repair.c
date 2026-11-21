@@ -6,6 +6,7 @@
 #include <nds/arm9/dldi.h>
 
 #include "boot-repair.h"
+#include "session-log.h"
 
 enum { SECTOR_BYTES = 512, SPARE_BYTES = 64, ROM_BLOCK_BYTES = 0x4000, FIRST_UDISK_OFFSET = 0x80000 };
 
@@ -57,28 +58,47 @@ static bool has_mapped_code(const DISC_INTERFACE *io, uint32_t offset)
 static bool live_udisk(const DISC_INTERFACE *io, uint32_t capacity)
 {
     uint32_t first = block_address(0);
-    if (first < FIRST_UDISK_OFFSET || first % ROM_BLOCK_BYTES || first >= capacity ||
-        !io->readSectors(first / SECTOR_BYTES, 1, sector)) return false;
+    if (first < FIRST_UDISK_OFFSET || first % ROM_BLOCK_BYTES || first >= capacity) {
+        session_log("Invalid first uDisk block\nat 0x%lx.", (unsigned long)first);
+        return false;
+    }
+    if (!io->readSectors(first / SECTOR_BYTES, 1, sector)) {
+        session_log("Could not read uDisk header.");
+        return false;
+    }
 
     // The released uDisk 1.45 and XuluMenu payloads share this compact header.
     if (read_le32(sector) != 0xea00002e || read_le32(sector + 0x0c) != 0x23232323 ||
-        sector[0x14] != 3) return false;
+        sector[0x14] != 3) {
+        session_log("Unrecognized uDisk header\nat 0x%lx.", (unsigned long)first);
+        return false;
+    }
     uint32_t size = read_le32(sector + 0x80);
     uint32_t arm9 = read_le32(sector + 0x20), arm9_size = read_le32(sector + 0x2c);
     uint32_t arm7 = read_le32(sector + 0x30), arm7_size = read_le32(sector + 0x3c);
     if (size > NRIO_RAW_TABLE_BYTES / sizeof(uint32_t) * ROM_BLOCK_BYTES ||
         arm9 < SECTOR_BYTES || arm9 % SECTOR_BYTES || arm9 >= size || !arm9_size || arm9_size > size - arm9 ||
-        arm7 < SECTOR_BYTES || arm7 % SECTOR_BYTES || arm7 >= size || !arm7_size || arm7_size > size - arm7)
+        arm7 < SECTOR_BYTES || arm7 % SECTOR_BYTES || arm7 >= size || !arm7_size || arm7_size > size - arm7) {
+        session_log("Invalid ARM9 or ARM7 range.");
         return false;
+    }
 
     uint32_t previous = 0;
     for (uint32_t offset = 0; offset < size; offset += ROM_BLOCK_BYTES) {
         uint32_t address = block_address(offset);
         if (address < FIRST_UDISK_OFFSET || address % ROM_BLOCK_BYTES ||
-            address > capacity - ROM_BLOCK_BYTES || address <= previous) return false;
+            address > capacity - ROM_BLOCK_BYTES || address <= previous) {
+            session_log("Invalid map entry %lu: 0x%lx.",
+                        (unsigned long)(offset / ROM_BLOCK_BYTES), (unsigned long)address);
+            return false;
+        }
         previous = address;
     }
-    return has_mapped_code(io, arm9) && has_mapped_code(io, arm7);
+    if (!has_mapped_code(io, arm9) || !has_mapped_code(io, arm7)) {
+        session_log("Mapped ARM9 or ARM7 code\nis missing or unreadable.");
+        return false;
+    }
+    return true;
 }
 
 static bool approve_repair(void)
@@ -108,40 +128,57 @@ void boot_repair(void)
     const uint32_t secondary_lba = NRIO_RAW_SECONDARY_TABLE / SECTOR_BYTES;
     const uint32_t table_sectors = NRIO_RAW_TABLE_BYTES / SECTOR_BYTES;
 
+    session_log("Reading main and spare geometry.");
     if (memcmp(&io->ioType, "NRWR", 4) || !select_view(io, NRIO_RAW_SPARE_READ, &spare_info) ||
         !io->readSectors(0, 1, plan.expected_spare) || !io->shutdown() || !io->startup() ||
         !select_view(io, NRIO_RAW_MAIN_READ, &main_info) || main_info.nand_id != spare_info.nand_id ||
         main_info.sectors <= FIRST_UDISK_OFFSET / SECTOR_BYTES || main_info.sectors > UINT32_MAX / SECTOR_BYTES) {
-        printf("Could not read cart geometry.\n");
+        session_log("Could not read cart geometry.");
         return;
     }
+    session_log("NAND ID %08lx, %lu sectors.", (unsigned long)main_info.nand_id,
+                (unsigned long)main_info.sectors);
+    session_log("Checking early boot records.");
     if (!known_shared_spare(plan.expected_spare) || !io->readSectors(0, 1, sector) || !has_data(sector, sizeof(sector))) {
-        printf("Early boot data is missing\nor uses an unknown layout.\n");
+        session_log("Early boot data is missing\nor uses an unknown layout.");
         return;
     }
     // Stage 2 skips table candidates preceded by the QAFE marker.
-    if (!io->readSectors(secondary_lba - 1, 1, sector) || !memcmp(sector + SECTOR_BYTES - 4, "QAFE", 4) ||
-        !io->readSectors(secondary_lba, table_sectors, plan.table) ||
-        !live_udisk(io, main_info.sectors * SECTOR_BYTES)) {
-        printf("No supported uDisk mapping\nfound in the secondary table.\n");
+    session_log("Checking table at 0x40000\nand its mapped uDisk image.");
+    if (!io->readSectors(secondary_lba - 1, 1, sector)) {
+        session_log("Could not read table marker.");
         return;
     }
+    if (!memcmp(sector + SECTOR_BYTES - 4, "QAFE", 4)) {
+        session_log("Stage 2 would skip this table.");
+        return;
+    }
+    if (!io->readSectors(secondary_lba, table_sectors, plan.table)) {
+        session_log("Could not read secondary table.");
+        return;
+    }
+    if (!live_udisk(io, main_info.sectors * SECTOR_BYTES)) return;
 
+    session_log("uDisk starts at 0x%lx.\nComparing primary table.", (unsigned long)block_address(0));
     bool identical = true;
     for (uint32_t i = 0; i < table_sectors; ++i) {
         if (!io->readSectors(primary_lba + i, 1, sector)) {
-            printf("Could not read primary table.\n");
+            session_log("Could not read primary table.");
             return;
         }
         if (memcmp(sector, plan.table + i * SECTOR_BYTES, SECTOR_BYTES)) identical = false;
     }
     if (identical) {
-        printf("Tables already match.\n");
+        session_log("Tables already match.");
         return;
     }
-    if (!approve_repair()) return;
+    session_log("Preflight passed. Tables differ.");
+    if (!approve_repair()) {
+        session_log("Repair cancelled.");
+        return;
+    }
 
-    printf("\nRewriting boot erase block.\n");
+    session_log("Repair confirmed.\nChecking live table and spare\ndata before erase.");
     if (!io->shutdown() || !io->startup() || !select_view(io, NRIO_RAW_TABLE_REPAIR, &repair_info) ||
         repair_info.nand_id != main_info.nand_id || repair_info.sectors != main_info.sectors ||
         !repair_info.workspace_bytes || repair_info.workspace_bytes > sizeof(raw_workspace) ||
@@ -149,12 +186,12 @@ void boot_repair(void)
         !io->readSectors(NRIO_RAW_REPAIR_TABLE_LBA, 0, &plan)) {
         struct nrio_raw_write_error error;
         if (io->readSectors(NRIO_RAW_WRITE_ERROR_LBA, 0, &error) && error.stage) {
-            printf("Repair failed. Stage %lu,\npage 0x%lx, detail 0x%lx.\n",
-                   (unsigned long)error.stage, (unsigned long)error.page, (unsigned long)error.detail);
+            session_log("Repair failed.");
+            session_log_write_error(&error);
         } else {
-            printf("Could not start the repair.\n");
+            session_log("Could not start the repair.");
         }
         return;
     }
-    printf("Verified the rewritten block.\nRestart to test uDisk boot.\n");
+    session_log("Verified the rewritten block.\nRestart to test uDisk boot.");
 }
