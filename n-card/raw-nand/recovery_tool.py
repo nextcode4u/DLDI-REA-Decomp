@@ -9,7 +9,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
-from arm_banner import default_template, prepare_from_dumps
+from arm_banner import ARMED_ROM, default_template, prepare_from_dumps
 from inspect_boot import (
     SECONDARY_TABLE,
     SPARE_SECTOR_SIZE,
@@ -147,7 +147,7 @@ class RecoveryTool:
             if parent:
                 output_dir = Path(parent) / "banner-ready"
                 prepare_from_dumps(target, donor_main, donor_spare, default_template(), output_dir)
-                self.status.set(f"Prepared the banner app and payload in {output_dir}")
+                self.status.set(f"Created {output_dir / ARMED_ROM} and banner.bin")
         except (OSError, ValueError) as error:
             self.show_error(error)
 

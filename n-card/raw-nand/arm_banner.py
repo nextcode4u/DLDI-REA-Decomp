@@ -10,6 +10,8 @@ EXPECTED_SIZE = 8 * 64
 MAIN_SIZE = 2048
 SPARE_SIZE = 64
 BANNER_PAGE = 4
+TOOLKIT_ROM = "nrio-raw-toolkit.nds"
+ARMED_ROM = "nrio-raw-toolkit-armed.nds"
 
 
 def arm(template, expected, main, spare):
@@ -38,13 +40,10 @@ def read_range(path, offset, length):
 
 def default_template():
     source_dir = Path(__file__).resolve().parent
-    toolkit = source_dir / "compiled/write-enabled/nrio-raw-toolkit.nds"
+    toolkit = source_dir / "compiled/write-enabled" / TOOLKIT_ROM
     if toolkit.is_file():
         return toolkit
-    repo_template = source_dir / "compiled/write-enabled/banner-only/nrio-raw-banner.nds"
-    if repo_template.is_file():
-        return repo_template
-    return source_dir / "nrio-raw-banner.nds"
+    return source_dir / TOOLKIT_ROM
 
 
 def prepare_from_dumps(target_spare, donor_main, donor_spare, template, output_dir):
@@ -52,7 +51,7 @@ def prepare_from_dumps(target_spare, donor_main, donor_spare, template, output_d
     main = read_range(donor_main, BANNER_PAGE * MAIN_SIZE, MAIN_SIZE)
     spare = read_range(donor_spare, BANNER_PAGE * SPARE_SIZE, SPARE_SIZE)
     image = arm(template.read_bytes(), expected, main, spare)
-    app_path = output_dir / "nrio-raw-banner-armed.nds"
+    app_path = output_dir / ARMED_ROM
     payload_path = output_dir / "banner.bin"
     output_dir.mkdir()
     try:
@@ -78,7 +77,7 @@ def from_dumps(argv):
         prepare_from_dumps(args.target_spare, args.donor_main, args.donor_spare, args.template, args.output_dir)
     except (OSError, ValueError) as error:
         parser.exit(1, f"{error}\n")
-    print(f"Created {args.output_dir / 'nrio-raw-banner-armed.nds'}")
+    print(f"Created {args.output_dir / ARMED_ROM}")
     print(f"Write {args.output_dir / 'banner.bin'} as 2048 bytes at 0x2000")
 
 

@@ -1,14 +1,13 @@
-"""Run the USB images' embedded ARM DLDI against a simulated Slot-1 bridge."""
+"""Run the toolkit's embedded ARM DLDI against a simulated Slot-1 bridge."""
 
 import struct
-from pathlib import Path
-
-from arm_banner import arm
 
 from unicorn import Uc, UC_ARCH_ARM, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE, UC_MODE_ARM
 from unicorn.arm_const import (
     UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_SP,
 )
+
+from arm_banner import arm, default_template
 
 CARD = 0x04000000
 CTRL = CARD + 0x1a4
@@ -178,14 +177,14 @@ def check(image, writable, nand_id, mode=None):
         assert not device.erased_blocks
 
 
-def recovery_device(image, nand_id, mode=None):
+def recovery_device(image, nand_id, mode):
     device = started_device(image, nand_id, mode)
     assert device.run(2, 0xfffffffe, device.pages_per_block * PAGE_BYTES, RAM + 0x10000)
     return device
 
 
-def check_cross_block(image, nand_id, mode=None):
-    device = recovery_device(image, nand_id, mode)
+def check_cross_block(image, nand_id):
+    device = recovery_device(image, nand_id, MAIN_WRITE)
     page = device.pages_per_block
     preserved_spare = b'\xff' + bytes(range(1, 64))
     device.flash[page - 1] = b'\x33' * 2048 + preserved_spare
@@ -209,8 +208,8 @@ def write_error(device):
     return struct.unpack('<III', device.vm.mem_read(RAM + 0x2000, 12))
 
 
-def check_banner_preflight(image, nand_id, mode=None):
-    device = recovery_device(image, nand_id, mode)
+def check_banner_preflight(image, nand_id):
+    device = recovery_device(image, nand_id, MAIN_WRITE)
     device.flash[1] = b'\xff' * 2048 + b'\x00' + b'\xff' * 63
     device.vm.mem_write(RAM, b'\x23' * 2048)
     assert not device.run(3, 16, 4, RAM)
@@ -218,7 +217,7 @@ def check_banner_preflight(image, nand_id, mode=None):
     assert not device.erased_blocks and not device.programmed_rows
 
 
-def check_failure(image, nand_id, failure, pages_written=1, mode=None):
+def check_failure(image, nand_id, failure, mode, pages_written=1):
     device = recovery_device(image, nand_id, mode)
     device.failure = failure
     device.vm.mem_write(RAM, b'\x23' * 512)
@@ -233,8 +232,8 @@ def check_failure(image, nand_id, failure, pages_written=1, mode=None):
     assert device.run(2, 0, 1, RAM) == 1  # Dumping remains available.
 
 
-def check_spare(image, nand_id, pages, mode=None):
-    device = started_device(image, nand_id, mode)
+def check_spare(image, nand_id, pages):
+    device = started_device(image, nand_id, SPARE_READ)
     assert device.run(2, 0xffffffff, 0, RAM) == 1
     info = struct.unpack('<IIII', device.vm.mem_read(RAM, 16))
     assert info == (1, pages // 8, 0, nand_id)
@@ -251,8 +250,8 @@ def check_spare(image, nand_id, pages, mode=None):
     assert not device.erased_blocks and not device.programmed_rows
 
 
-def check_spare_write(image, nand_id, mode=None):
-    device = started_device(image, nand_id, mode)
+def check_spare_write(image, nand_id):
+    device = started_device(image, nand_id, SPARE_WRITE)
     assert device.run(2, 0xffffffff, 0, RAM)
     assert struct.unpack('<IIII', device.vm.mem_read(RAM, 16)) == (
         1, 65_536, device.pages_per_block * PAGE_BYTES, nand_id,
@@ -282,8 +281,8 @@ def check_spare_write(image, nand_id, mode=None):
     assert device.erased_blocks == [0, page]
 
 
-def check_protected(image, nand_id, mode=None):
-    device = recovery_device(image, nand_id, mode)
+def check_protected(image, nand_id):
+    device = recovery_device(image, nand_id, PROTECTED)
     first_writable = device.pages_per_block * 4
     boot_page = b'\x12' * PAGE_BYTES
     device.flash[0] = boot_page
@@ -301,10 +300,9 @@ def check_protected(image, nand_id, mode=None):
     assert device.record(device.pages_per_block)[:512] == payload[:512]
 
 
-def check_banner_variant(template, nand_id, mode=None):
+def check_banner(template, nand_id):
     device = started_device(template, nand_id)
-    if mode is not None:
-        assert not select_mode(device, mode)
+    assert not select_mode(device, BANNER)
     assert device.run(2, 0xffffffff, 0, RAM)
     assert struct.unpack_from('<I', device.vm.mem_read(RAM, 16), 8)[0] == 0
     assert not device.run(2, 0xfffffffe, device.pages_per_block * PAGE_BYTES, RAM + 0x10000)
@@ -316,7 +314,7 @@ def check_banner_variant(template, nand_id, mode=None):
     new_main = b'\x31' * 2048
     new_spare = bytes(range(63, -1, -1))
     image = arm(template, snapshot, new_main, new_spare)
-    device = recovery_device(image, nand_id, mode)
+    device = recovery_device(image, nand_id, BANNER)
     device.vm.mem_write(RAM, new_main)
     for page in range(8):
         device.flash[page] = bytes([page]) * 2048 + original_spare
@@ -335,7 +333,7 @@ def check_banner_variant(template, nand_id, mode=None):
         assert device.record(page) == bytes([page]) * 2048 + original_spare
     assert device.record(8) == b'\x60' * 2112
 
-    device = recovery_device(image, nand_id, mode)
+    device = recovery_device(image, nand_id, BANNER)
     for page in range(8):
         device.flash[page] = b'\xff' * 2048 + original_spare
     device.flash[1] = device.record(1)[:-1] + b'\xff'
@@ -362,12 +360,12 @@ def check_toolkit(image, chip):
 
     check(image, False, chip)
     check(image, True, chip, MAIN_WRITE)
-    check_cross_block(image, chip, MAIN_WRITE)
-    check_banner_preflight(image, chip, MAIN_WRITE)
-    check_spare(image, chip, 524_288, SPARE_READ)
-    check_spare_write(image, chip, SPARE_WRITE)
-    check_protected(image, chip, PROTECTED)
-    check_banner_variant(image, chip, BANNER)
+    check_cross_block(image, chip)
+    check_banner_preflight(image, chip)
+    check_spare(image, chip, 524_288)
+    check_spare_write(image, chip)
+    check_protected(image, chip)
+    check_banner(image, chip)
     for failure in ('erase', 'program', 'readback'):
         check_failure(image, chip, failure, mode=MAIN_WRITE)
         check_failure(image, chip, failure, pages_written=8, mode=SPARE_WRITE)
@@ -421,45 +419,9 @@ def check_same_cart_repair(image, chip):
 
 
 if __name__ == '__main__':
-    path = Path(__file__).resolve().parent / 'compiled'
-    writable_path = path / 'write-enabled'
-    for mode in ('readonly', 'recovery'):
-        directory = writable_path if mode == 'recovery' else path
-        image = (directory / f'nrio-raw-{mode}.nds').read_bytes()
-        for chip in (0x1500d3ec, 0x3500d3ec):
-            check(image, mode == 'recovery', chip)
-            if mode == 'recovery':
-                check_cross_block(image, chip)
-                check_banner_preflight(image, chip)
-                for failure in ('erase', 'program', 'readback'):
-                    check_failure(image, chip, failure)
-        print(f'{mode}: physical sector 0, full capacity and write policy passed on both geometries')
-    print('Cross-block writes and erase, program and readback failure handling passed on both geometries')
-    spare = (path / 'nrio-raw-spare-readonly.nds').read_bytes()
-    check_spare(spare, 0x1500d3ec, 524_288)
-    check_spare(spare, 0x3500d5ec, 1_048_576)
-    print('spare: page ordering, capacity, high row bits and write rejection passed')
-
-    spare_write = (writable_path / 'nrio-raw-spare-write.nds').read_bytes()
-    for chip in (0x1500d3ec, 0x3500d3ec):
-        check_spare_write(spare_write, chip)
-        for failure in ('erase', 'program', 'readback'):
-            check_failure(spare_write, chip, failure, pages_written=8)
-    print('spare-write: raw spare replacement, main data preservation and failure handling passed')
-
-    protected = (writable_path / 'nrio-raw-protected.nds').read_bytes()
-    for chip in (0x1500d3ec, 0x3500d3ec):
-        check_protected(protected, chip)
-    print('protected: block zero and crossing writes rejected, first unprotected block writable')
-
-    banner = (writable_path / 'banner-only' / 'nrio-raw-banner.nds').read_bytes()
-    for chip in (0x1500d3ec, 0x3500d3ec):
-        check_banner_variant(banner, chip)
-    print('banner: unarmed, wrong request and spare mismatch refused; authorized page replaced')
-
-    toolkit = (writable_path / 'nrio-raw-toolkit.nds').read_bytes()
+    toolkit = default_template().read_bytes()
     for chip in (0x1500d3ec, 0x3500d3ec):
         check_toolkit(toolkit, chip)
         check_same_cart_repair(toolkit, chip)
-    check_spare(toolkit, 0x3500d5ec, 1_048_576, SPARE_READ)
+    check_spare(toolkit, 0x3500d5ec, 1_048_576)
     print('toolkit: USB modes, same-cart repair, and write protections passed on both geometries')

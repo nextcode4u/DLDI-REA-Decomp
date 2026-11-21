@@ -40,7 +40,7 @@ Apache Thunder tested the C build on a physical N-Card using GodMode9i. It mount
 
 ## Physical NAND recovery
 
-The [raw NAND recovery builds](raw-nand/) start at physical sector 0 and bypass the flash translation layer. See the [recovery instructions](raw-nand/#recovery-instructions) for imaging and choosing a repair path, and the [hardware findings](raw-nand/#hardware-results) for Apache Thunder’s test results.
+The [raw NAND recovery toolkit](raw-nand/) uses one DS app and an embedded multi-mode DLDI to access physical NAND from sector 0. See the [recovery instructions](raw-nand/#recovery-instructions) for imaging and choosing a repair path, and the [hardware findings](raw-nand/#hardware-results) for Apache Thunder’s test results.
 
 ## Source tree
 

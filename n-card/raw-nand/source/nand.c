@@ -140,7 +140,6 @@ bool nand_read_sector(u32 column, u8 *buffer)
     return wait_idle();
 }
 
-#if defined(RAW_NAND_WRITE) || defined(RAW_NAND_SPARE)
 bool nand_read_spare(u8 *buffer)
 {
     CARD_COMMAND[0] = 0xd0;
@@ -155,9 +154,6 @@ bool nand_read_spare(u8 *buffer)
     return true;
 }
 
-#endif
-
-#ifdef RAW_NAND_WRITE
 static bool successful_status(void)
 {
     u32 reply;
@@ -216,4 +212,3 @@ bool nand_program_page(u32 page, const u8 *record)
     }
     return opcode(0x10) && successful_status();
 }
-#endif
