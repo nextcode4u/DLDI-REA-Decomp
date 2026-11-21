@@ -76,6 +76,18 @@ An unbootable N-Card requires a way to launch the NRIO app independently of the 
 3. **Match the repair to the finding.** Use a card-specific uDisk updater and confirm its target block table before flashing. The ExpressCard result applies to the `0x8000` variant used on that card. For a confirmed spare-area repair with replacement data appropriate for the target, use the [spare-area writer](compiled/write-enabled/nrio-raw-spare-write.nds). Its USB sector 0 covers eight spare records, so preserve any records outside the intended change in the 512-byte payload. For a banner-only change, follow the [banner-only instructions](compiled/write-enabled/banner-only/) for the page at main offset `0x2000`.
 4. **Verify the result.** Read back the affected main and spare data with the read-only builds and compare them with the expected bytes. Check the banner in the DS menu and launch the cart to verify that uDisk boots. Record which checks pass and any USB or DS error text.
 
+### Assess recovery using only the target card
+
+Run the [read-only boot inspector](inspect_boot.py) on separate physical main and packed spare dumps from the target card. It reports whether the 16 KiB table regions are blank or identical, checks the page at the typical uDisk start, and lists the state of each spare record in USB sector 0, including exact copies of populated records. It reads the first `0x80800` main bytes and the first `0x200` spare bytes. Table contents still need to be checked against the actual card layout. [Apache Thunder’s block table description](https://gbatemp.net/threads/open-source-flashcart-project-info.665781/page-2)
+
+```sh
+python3 inspect_boot.py target-main.bin target-spare.bin
+```
+
+- **Primary table damaged, secondary table and uDisk intact.** On the reported uDisk-era layout, the card's table at `0x40000` can supply the contents for `0x8000` and point boot directly at its existing uDisk. The [16 Gbit test](#direct-udisk-boot-test-on-a-working-16-gbit-n-card) verified the resulting boot path using a corrected image and a subsequent uDisk reflash. A repair limited to the table using only the target card's data still needs a hardware test.
+- **uDisk damaged.** A compatible installer can supply the uDisk section, as in the [DS Linker recovery](#third-card-recovery-and-spare-area-readback). The boot table still needs to point at the installed copy.
+- **Early boot data damaged.** Keep surviving main and spare bytes from the target. An earlier backup from that same cart can supply missing data. The [ARM7 copies](#arm7-boot-code-in-the-spare-area) and [repeated Blowfish bytes](#blowfish-data-in-the-spare-area) are potential sources for partial damage. A complete reconstruction of erased boot records without a backup remains unverified. A blank page 0 spare record alone is normal on the observed working 16 Gbit card.
+
 ## Hardware results
 
 Apache Thunder performed the hardware tests below and provided the recovery observations and DS Linker sample.
