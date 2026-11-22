@@ -6,10 +6,11 @@ index c3250e7..79fab94 100644
 -SOURCES  := source source/common
 +SOURCES  := source source/common source/recovery_nand
 diff --git a/arm9/source/main.cpp b/arm9/source/main.cpp
-index 3d1a9e7..7f40966 100644
+index 3d1a9e7..2c6c4d1 100644
 --- a/arm9/source/main.cpp
 +++ b/arm9/source/main.cpp
-@@ -1041,0 +1042,8 @@ void DoUdiskDump() {
+@@ -1042 +1042,9 @@ void DoUdiskDump() {
+-int UtilityMenu() {
 +extern "C" void nrioTool_sd_recovery(int action);
 +
 +static void DoSDRecovery(int action) {
@@ -18,31 +19,70 @@ index 3d1a9e7..7f40966 100644
 +	CardInit();
 +}
 +
-@@ -1046,0 +1055 @@ int UtilityMenu() {
++int UtilityMenu(bool recoveryOnly = false) {
+@@ -1046 +1054,2 @@ int UtilityMenu() {
+-	if (wasDSi)printf("Press [A] to boot GodMode9Nrio\n");
++	if (wasDSi && !recoveryOnly)printf("Press [A] to boot GodMode9Nrio\n");
 +	else printf("\n");
-@@ -1049,0 +1059,8 @@ int UtilityMenu() {
+@@ -1048 +1057 @@ int UtilityMenu() {
+-	printf("Press [X] to build update file\n");
++	printf("%s\n", recoveryOnly ? "" : "Press [X] to build update file");
+@@ -1049,0 +1059,9 @@ int UtilityMenu() {
 +	if (wasDSi && sdMounted) {
 +		printf("Press [Y] to fix DSi safe mode\n\n"
 +		       "Press [R] to install SD banner\n\n"
 +		       "Press [SELECT] to save block 0\n\n"
-+		       "Press [UP] to restore ARM7\n");
++		       "Press [UP] to restore ARM7\n\n"
++		       "Press [Down] to restore block 0\n");
 +	} else {
-+		printf("\n\n\n\n\n\n\n");
++		printf("\n\n\n\n\n\n\n\n\n");
 +	}
-@@ -1051,4 +1068 @@ int UtilityMenu() {
+@@ -1051,4 +1069 @@ int UtilityMenu() {
 -	printf("\n");
 -	printf("\n"); // printf("Press [Y] write banner to cart\n");
 -	printf("\n");
 -	printf("\n\n\n\n\n\n\n\nPress [B] to go to main menu...\n");
-+	printf("\n\nPress [B] to go to main menu...\n");
-@@ -1061,0 +1076,4 @@ int UtilityMenu() {
++	printf("%s\n", recoveryOnly ? "Press [B] to exit" : "Press [B] to go to main menu...");
+@@ -1059,2 +1074,2 @@ int UtilityMenu() {
+-			case KEY_A: 	{ if (wasDSi)value = 0; } break;
+-			case KEY_X:		{ value = 1; } break;
++			case KEY_A: 	{ if (wasDSi && !recoveryOnly)value = 0; } break;
++			case KEY_X:		{ if (!recoveryOnly)value = 1; } break;
+@@ -1061,0 +1077,5 @@ int UtilityMenu() {
 +			case KEY_Y:		{ if (wasDSi && sdMounted)value = 2; } break;
 +			case KEY_R:		{ if (wasDSi && sdMounted)value = 3; } break;
 +			case KEY_SELECT:	{ if (wasDSi && sdMounted)value = 5; } break;
 +			case KEY_UP:	{ if (wasDSi && sdMounted)value = 6; } break;
-@@ -1299 +1317,4 @@ int main() {
++			case KEY_DOWN:	{ if (wasDSi && sdMounted)value = 7; } break;
+@@ -1068,0 +1089,15 @@ int UtilityMenu() {
++static void RunSDRecoveryMenu() {
++	if (SCFGUnlocked) enableSlot1();
++	if (access("sd:/nrioFiles", F_OK) != 0) mkdir("sd:/nrioFiles", 0777);
++	for (;;) {
++		switch (UtilityMenu(true)) {
++			case 2: nrioTool_sd_recovery(0); break;
++			case 3: nrioTool_sd_recovery(1); break;
++			case 5: nrioTool_sd_recovery(2); break;
++			case 6: nrioTool_sd_recovery(3); break;
++			case 7: nrioTool_sd_recovery(4); break;
++			case 4: return;
++		}
++	}
++}
++
+@@ -1188,0 +1224 @@ int main() {
++	bool recoveryOnly = wasDSi && (keysHeld() & KEY_L);
+@@ -1201,0 +1238,6 @@ int main() {
++	if (recoveryOnly) {
++		if (sdMounted) RunSDRecoveryMenu();
++		else DoFATerror(true, true);
++		fifoSendValue32(FIFO_USER_03, 1);
++		return 0;
++	}
+@@ -1299 +1341,5 @@ int main() {
 -					// case 3: { DoBannerWrite(); } break;
 +					case 2: { DoSDRecovery(0); } break;
 +					case 3: { DoSDRecovery(1); } break;
 +					case 5: { DoSDRecovery(2); } break;
 +					case 6: { DoSDRecovery(3); } break;
++					case 7: { DoSDRecovery(4); } break;
