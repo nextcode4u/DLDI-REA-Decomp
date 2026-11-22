@@ -137,6 +137,12 @@ Apache's later `dsfireline.bin` backup covers main NAND from `0x00000` through `
 
 The supplied `dsfireline_spare.bin` covers only the first eight spare records (`0x200` packed bytes). A full snapshot of block 0 for this 128-page geometry requires the first `0x2000` packed spare bytes in addition to the first `0x40000` main bytes. The toolkit successfully prepares a test ROM from the supplied files and reports the missing spare coverage. The targeted installer requires the full block snapshot. Its physical write path still needs a hardware test.
 
+### DS Linker safe-mode comparison
+
+Apache supplied the unmodified and modified DS Linker safe-mode ROMs. The target's main backup maps the unmodified ROM byte for byte from `0x20000`. Apache's patch and the toolkit's patch both change physical NAND pages `0x40` and `0x66` and preserve the eight bytes after the relocated ARM7 payload in emulation. The original DS Linker and Fire Line ARM7 payloads differ by one 32-bit word. The DS Linker waits for `0x1118027E` at `0x027FFE60`. The Fire Line waits for `0x1918027E` at the same address. Emulation confirmed that the DS Linker branches with its own word and keeps waiting with the Fire Line word. Prepare the patch from the target cart's own safe-mode ROM.
+
+The supplied DS Linker spare file is 2,000 bytes (`0x7D0`). All captured bytes from `0x180` onward read as `FF`. A targeted install still needs a complete block-0 spare capture using the erase geometry from that cart's DS log.
+
 ### Prepare stock safe mode in the recovery toolkit
 
 1. Save **Main: read only** and **Spare: read only** dumps from the same cart.
