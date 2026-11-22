@@ -122,7 +122,7 @@ To enter USB update mode on a DS or DS Lite, insert the USB writer into Slot-2 a
 
 ### DS Fire Card safe-mode ARM7 experiment
 
-Apache Thunder confirmed that the DS Fire Card booted on a DSi with his modified safe-mode ROM. The report covers Apache's own patch on the tested cart. The USB update path on DS or DS Lite with the modified ROM remains to be retested.
+Apache Thunder confirmed that the DS Fire Card booted on a DSi with his modified safe-mode ROM. Apache installed the modified ROM by force-writing after putting spare block 0 into the bricked state. This confirms DSi boot after that workaround. A targeted install that preserves the existing boot spare data, and the USB update path on DS or DS Lite with the modified ROM, still need hardware testing.
 
 Apache reports an ARM7 payload of `0x38` bytes in the safe-mode ROM and `0x40` bytes in the main ROM. The hypothesis is that the first-stage ROM leaves eight bytes of handoff data at the end of the ARM7 destination and that loading safe mode on a DSi overwrites them. The role of those bytes and the cause of the suspected overwrite are unverified.
 
