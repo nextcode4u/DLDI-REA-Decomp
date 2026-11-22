@@ -8,6 +8,9 @@ from pathlib import Path
 
 PAYLOAD_SIZE = 0x38
 HANDOFF_SIZE = 8
+STOCK_STAGE_ADDRESS = 0x02380000
+STOCK_ARM7_ADDRESS = 0x03800000
+STOCK_ARM7_SLOT_SIZE = 0x200
 MAIN_RAM = (0x02000000, 0x023BFE00)
 ARM7_WRAM = (0x037F8000, 0x03807E00)
 
@@ -74,6 +77,12 @@ def occupied_sections(rom):
         yield "banner", banner, banner + lengths[version]
 
 
+def is_compact_safe_mode(header):
+    return (header[:4] == b"\x2e\x00\x00\xea"
+            and header[0x0C:0x10] == b"####"
+            and read_word(header, 0x84) == 0x200)
+
+
 def patch_rom(rom, stage_address):
     if len(rom) < 0x200 or rom[0x12] != 0:
         raise ValueError("Expected a standalone NTR-format safe-mode ROM.")
@@ -86,13 +95,19 @@ def patch_rom(rom, stage_address):
             not ARM7_WRAM[0] <= destination <= ARM7_WRAM[1] - size - HANDOFF_SIZE):
         raise ValueError("Expected an aligned ARM entry and payload in ARM7 WRAM.")
     used_size = read_word(rom, 0x80)
-    if source % 4 or not 0x8000 <= source < used_size <= len(rom):
-        raise ValueError("ARM7 source must be aligned and inside the declared ROM after the secure area.")
+    compact = is_compact_safe_mode(rom)
+    # This loader reads the compact image in sectors. For standard NTR ROMs,
+    # keep the replacement outside the secure area.
+    alignment = STOCK_ARM7_SLOT_SIZE if compact else 4
+    first_source = STOCK_ARM7_SLOT_SIZE if compact else 0x8000
+    if source % alignment or not first_source <= source < used_size <= len(rom):
+        raise ValueError("ARM7 source must be aligned and inside the declared ROM.")
 
     payload = rom[source:source + size]
     loader = struct.pack("<" + "I" * (len(STUB) + 7), *STUB, destination, entry, 0, 0, 0, 0, 0)
     replacement = loader + payload
-    end = source + len(replacement)
+    load_size = STOCK_ARM7_SLOT_SIZE if compact else len(replacement)
+    end = source + load_size
     if end > used_size:
         raise ValueError("The stub and payload do not fit inside the declared ROM.")
     padding = rom[source + size:end]
@@ -102,7 +117,7 @@ def patch_rom(rom, stage_address):
         if overlaps(source, end, start, stop):
             raise ValueError(f"ARM7 replacement would overlap {label} in the ROM.")
 
-    stage_end = stage_address + len(replacement)
+    stage_end = stage_address + load_size
     if stage_address % 4 or not MAIN_RAM[0] <= stage_address < stage_end <= MAIN_RAM[1]:
         raise ValueError("Choose a word-aligned staging range in NTR main RAM.")
     arm9_ram, arm9_size = struct.unpack_from("<II", rom, 0x28)
@@ -112,10 +127,18 @@ def patch_rom(rom, stage_address):
         raise ValueError("ARM7 staging range overlaps the ARM9 image in RAM.")
 
     patched = bytearray(rom)
-    patched[source:end] = replacement
-    struct.pack_into("<III", patched, 0x34, stage_address, stage_address, len(replacement))
+    patched[source:source + len(replacement)] = replacement
+    struct.pack_into("<III", patched, 0x34, stage_address, stage_address, load_size)
     struct.pack_into("<H", patched, 0x15E, crc16(patched[:0x15E]))
     return patched, (source, end, destination, entry, stage_end)
+
+
+def patch_stock_rom(rom):
+    if len(rom) < 0x200 or not is_compact_safe_mode(rom):
+        raise ValueError("The primary table does not resolve to a recognized compact safe-mode ROM.")
+    if read_word(rom, 0x38) != STOCK_ARM7_ADDRESS:
+        raise ValueError("Expected the unmodified ARM7 payload at 0x03800000.")
+    return patch_rom(rom, STOCK_STAGE_ADDRESS)
 
 
 def main():

@@ -16,6 +16,7 @@ from inspect_boot import (
     SPARE_SECTOR_SIZE,
     TABLE_SIZE,
     inspect_boot,
+    prepare_stock_safe_mode,
     read_main_dump,
     read_prefix,
 )
@@ -32,9 +33,11 @@ class RecoveryTool:
         tabs = ttk.Notebook(root)
         tabs.grid(row=0, column=0, sticky="nsew", padx=12, pady=(12, 6))
         recovery = ttk.Frame(tabs, padding=12)
+        safe_mode = ttk.Frame(tabs, padding=12)
         banner = ttk.Frame(tabs, padding=12)
         log_tab = ttk.Frame(tabs, padding=12)
         tabs.add(recovery, text="Inspect and export")
+        tabs.add(safe_mode, text="Stock safe mode")
         tabs.add(banner, text="Banner repair")
         tabs.add(log_tab, text="Session log")
 
@@ -54,6 +57,18 @@ class RecoveryTool:
         self.report.grid(row=4, column=0, columnspan=3, sticky="nsew")
         self.set_report("Select the target dumps and choose Inspect dumps.\n"
                         "Inspection compares both table regions and checks the spare layout.")
+
+        safe_mode.columnconfigure(1, weight=1)
+        self.file_field(safe_mode, 0, "Target main dump", self.main_dump)
+        self.file_field(safe_mode, 1, "Target spare dump", self.spare_dump)
+        ttk.Label(safe_mode, text="Erase buffer pages (DS log)").grid(row=2, column=0, sticky="w", pady=3)
+        self.erase_pages = ttk.Combobox(safe_mode, values=("64", "128"), state="readonly", width=8)
+        self.erase_pages.grid(row=2, column=1, sticky="w", pady=3)
+        ttk.Label(safe_mode, text="Prepare a patched safe-mode ROM using this cart's own backup. "
+                                  "The affected NAND ranges are recorded in the session log.",
+                  wraplength=540).grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 8))
+        ttk.Button(safe_mode, text="Prepare safe-mode ROM…", command=self.prepare_safe_mode).grid(
+            row=4, column=0, columnspan=3, sticky="w")
 
         banner.columnconfigure(1, weight=1)
         self.file_field(banner, 0, "Target spare dump", self.spare_dump)
@@ -163,7 +178,7 @@ class RecoveryTool:
             self.show_error(error)
 
     def save_bytes(self, name, data):
-        path = filedialog.asksaveasfilename(parent=self.root, initialfile=name, defaultextension=".bin")
+        path = filedialog.asksaveasfilename(parent=self.root, initialfile=name, defaultextension=Path(name).suffix)
         if path:
             output_path = Path(path)
             output = output_path.open("xb")
@@ -196,6 +211,19 @@ class RecoveryTool:
             if len(set(table)) == 1:
                 raise ValueError("The secondary table region contains a single repeated byte.")
             self.save_bytes("secondary-table-0x40000-review.bin", table)
+        except (OSError, ValueError) as error:
+            self.show_error(error)
+
+    def prepare_safe_mode(self):
+        try:
+            main = self.dump_file(self.main_dump, "target main dump")
+            spare = self.dump_file(self.spare_dump, "target spare dump")
+            if not self.erase_pages.get():
+                raise ValueError("Select the erase-buffer page count from the DS log.")
+            self.log(f"Preparing stock safe mode.\nTarget main: {main}\nTarget spare: {spare}")
+            patched, report = prepare_stock_safe_mode(main, spare, int(self.erase_pages.get()))
+            self.log(report)
+            self.save_bytes("safe-mode-dsi-test.nds", patched)
         except (OSError, ValueError) as error:
             self.show_error(error)
 

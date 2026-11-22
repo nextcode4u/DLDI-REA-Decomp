@@ -132,6 +132,20 @@ Apache supplied the tested `safe.nds` for main NAND offset `0x20000`. It is `0x1
 
 This approach keeps the primary table pointing to safe mode so the stock uDisk path can remain in place. It does not require installing XuluMenu. The supplied USB logs for NAND ID `2514d3ec` report 1,024 main sectors written (512 KiB total) and one packed spare sector written, both sessions with zero write errors. The logs record transfer counts. Verifying which bytes changed and whether the original uDisk data was preserved requires before-and-after NAND dumps.
 
+### Prepare stock safe mode in the recovery toolkit
+
+1. Save **Main: read only** and **Spare: read only** dumps from the same cart.
+2. Open **Stock safe mode** in the Windows toolkit. Select the two dumps and the erase-buffer page count from the DS session log.
+3. Choose **Prepare safe-mode ROM** and save `safe-mode-dsi-test.nds`. The session log shows the affected NAND erase blocks and flags missing backup coverage.
+
+The toolkit follows the primary table at `0x8000` to extract a supported compact safe-mode ROM from the main dump. It stages ARM7 at Apache's tested address, `0x02380000`, using the same `0x200`-byte load size. The generated stub copies the original `0x38` bytes back into ARM7 WRAM before jumping to the original entry. The output retains the original ROM length. It uses the target's own backup and needs no separate ROM download or XuluMenu installation. Preparation runs offline and produces a ROM for testing. Installing this ROM requires a separate write workflow verified on the target cart.
+
+To prepare the same file from the command line, use the page count from the target's DS log.
+
+```sh
+python3 inspect_boot.py target-main.bin target-spare.bin --prepare-safe-mode safe-mode-dsi-test.nds --pages-per-block 128
+```
+
 Use the [offline patcher](patch_safe_mode.py) with the original, extracted safe-mode `.nds` and a confirmed free staging address in main RAM. Replace `STAGING_ADDRESS` with that address in hexadecimal.
 
 ```sh
