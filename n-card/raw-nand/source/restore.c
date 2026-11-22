@@ -219,9 +219,27 @@ static volatile struct {
     .signature = "NRIO-SAFE-v1",
 };
 
+static bool live_safe_mode_plan;
+static u32 live_banner_pages;
+static u8 live_banner[PAGE_SIZE];
+
 bool nrio_recovery_safe_mode_ready(void)
 {
     return safe_mode_plan.pages == 64 || safe_mode_plan.pages == 128;
+}
+
+uint32_t nrio_recovery_backup_pages(void)
+{
+    return live_safe_mode_plan ? safe_mode_plan.pages : live_banner_pages;
+}
+
+bool nrio_recovery_copy_backup_page(uint32_t page, void *main, void *spare)
+{
+    if (page >= nrio_recovery_backup_pages() || !main || !spare) return false;
+    const volatile u8 *source = safe_mode_plan.expected + page * PAGE_RECORD_SIZE;
+    for (unsigned i = 0; i < PAGE_SIZE; ++i) ((u8 *)main)[i] = source[i];
+    for (unsigned i = 0; i < SPARE_SIZE; ++i) ((u8 *)spare)[i] = source[PAGE_SIZE + i];
+    return true;
 }
 
 static const u8 *main_sector(const u8 *records, u32 sector)
@@ -234,12 +252,11 @@ enum { SAFE_MODE_ROM_BLOCK = 0x4000, SAFE_MODE_MIN_ADDRESS = 0x18000,
        SAFE_MODE_STOCK_RAM = 0x03800000, SAFE_MODE_STAGE_RAM = 0x02380000,
        SAFE_MODE_PAYLOAD_BYTES = 0x38 };
 
-static bool live_safe_mode_plan;
-
 void discard_live_safe_mode(void)
 {
     if (live_safe_mode_plan) safe_mode_plan.pages = 0;
     live_safe_mode_plan = false;
+    live_banner_pages = 0;
 }
 
 static bool safe_mode_locations(const u8 *records, u32 sectors, u32 locations[2])
@@ -294,6 +311,30 @@ uint32_t nrio_safe_mode_handoff(const uint8_t *payload)
     // The Fire Line and DS Linker bodies differ only in this handoff word.
     if (nrio_safe_mode_crc16(payload, 0x34) != 0x4b78) return 0;
     return word == 0x1918027e || word == 0x1118027e ? word : 0;
+}
+
+bool nrio_recovery_check_safe_mode_header(const uint8_t sector[512])
+{
+    return live_safe_mode_plan && sector && equal(sector, safe_mode_plan.replacement[0], SECTOR_SIZE);
+}
+
+bool nrio_recovery_select_safe_mode_payload(const uint8_t sector[512])
+{
+    if (!live_safe_mode_plan || !sector) return false;
+    if (equal(sector, safe_mode_plan.replacement[1], SECTOR_SIZE)) return true;
+
+    // Apache's relocation stub, carrying this exact cart's original 56 bytes.
+    u32 index = safe_mode_plan.sectors[1];
+    const volatile u8 *original = safe_mode_plan.expected +
+        index / SECTORS_PER_PAGE * PAGE_RECORD_SIZE + index % SECTORS_PER_PAGE * SECTOR_SIZE;
+    if (nrio_safe_mode_crc16(sector, 0x3c) != 0x2382 ||
+        load_word(sector + 0x74) != SAFE_MODE_PAYLOAD_BYTES ||
+        load_word(sector + 0x78) != SAFE_MODE_STOCK_RAM ||
+        !equal(sector + 0x3c, original, SAFE_MODE_PAYLOAD_BYTES) ||
+        !equal(sector + 0x7c, original + 0x7c, SECTOR_SIZE - 0x7c))
+        return false;
+    for (unsigned i = 0; i < SECTOR_SIZE; ++i) safe_mode_plan.replacement[1][i] = sector[i];
+    return true;
 }
 
 static bool safe_mode_slot_available(const u8 *header)
@@ -389,10 +430,8 @@ bool prepare_live_safe_mode(u32 pages, u8 *records, struct nrio_raw_write_error 
     return true;
 }
 
-bool restore_safe_mode(u32 pages, u8 *records, struct nrio_raw_write_error *error)
+static bool read_matching_snapshot(u32 pages, u8 *records, struct nrio_raw_write_error *error)
 {
-    if (!nrio_recovery_safe_mode_ready() || safe_mode_plan.pages != pages)
-        return fail_write(error, NRIO_RAW_WRITE_SAFE_MODE_PLAN, 0, pages);
     for (u32 i = 0; i < pages; ++i) {
         u8 *record = records + i * PAGE_RECORD_SIZE;
         if (!read_page(i, record)) return fail_write(error, NRIO_RAW_WRITE_READ_BLOCK, i, 0);
@@ -402,6 +441,14 @@ bool restore_safe_mode(u32 pages, u8 *records, struct nrio_raw_write_error *erro
             return fail_write(error, NRIO_RAW_WRITE_SNAPSHOT, i, 1);
     }
 
+    return true;
+}
+
+bool restore_safe_mode(u32 pages, u8 *records, struct nrio_raw_write_error *error)
+{
+    if (!nrio_recovery_safe_mode_ready() || safe_mode_plan.pages != pages)
+        return fail_write(error, NRIO_RAW_WRITE_SAFE_MODE_PLAN, 0, pages);
+    if (!read_matching_snapshot(pages, records, error)) return false;
     u32 locations[2];
     if (!safe_mode_locations(records, pages * SECTORS_PER_PAGE, locations) ||
         locations[0] != safe_mode_plan.sectors[0] || locations[1] != safe_mode_plan.sectors[1])
@@ -414,6 +461,51 @@ bool restore_safe_mode(u32 pages, u8 *records, struct nrio_raw_write_error *erro
         u8 *target = record + column * SECTOR_SIZE;
         if (equal(target, safe_mode_plan.replacement[i], SECTOR_SIZE)) continue;
         for (u32 j = 0; j < SECTOR_SIZE; ++j) target[j] = safe_mode_plan.replacement[i][j];
+        regenerate_ecc(record, column);
+        changed = true;
+    }
+    return !changed || program_and_verify_block(0, pages, records, error);
+}
+
+
+// Fire Line and DS Linker store two 0x800-byte copies. Their v1 banner
+// CRCs cover the copied bytes followed by 0x40 logical zero bytes.
+bool prepare_sd_banner(u32 pages, u8 *records, const u8 *banner, struct nrio_raw_write_error *error)
+{
+    if (pages != 64 && pages != 128)
+        return fail_write(error, NRIO_RAW_WRITE_SAFE_MODE_PLAN, 0, pages);
+    for (u32 i = 0; i < pages; ++i) {
+        if (!read_page(i, records + i * PAGE_RECORD_SIZE))
+            return fail_write(error, NRIO_RAW_WRITE_READ_BLOCK, i, 0);
+    }
+    const u8 *header = main_sector(records, 2);
+    const u8 *current = main_sector(records, BANNER_LBA);
+    if (load_word(header) != UINT32_C(0x42475344) ||
+        load_word(header + 0x0c) != UINT32_C(0x42475344) ||
+        current[0] != 1 || current[1] || banner[0] != 1 || banner[1])
+        return fail_write(error, NRIO_RAW_WRITE_SAFE_MODE_PLAN, BANNER_PAGE, 0);
+
+    u8 crc_data[0x820];
+    for (unsigned i = 0; i < PAGE_SIZE - 0x20; ++i) crc_data[i] = banner[i + 0x20];
+    for (unsigned i = 0; i < 0x40; ++i) crc_data[PAGE_SIZE - 0x20 + i] = 0;
+    if (nrio_safe_mode_crc16(crc_data, sizeof(crc_data)) != (banner[2] | banner[3] << 8))
+        return fail_write(error, NRIO_RAW_WRITE_SAFE_MODE_PLAN, BANNER_PAGE, 0);
+    for (u32 i = 0; i < pages * PAGE_RECORD_SIZE; ++i) safe_mode_plan.expected[i] = records[i];
+    for (u32 i = 0; i < PAGE_SIZE; ++i) live_banner[i] = banner[i];
+    live_banner_pages = pages;
+    return true;
+}
+
+bool install_sd_banner(u32 pages, u8 *records, struct nrio_raw_write_error *error)
+{
+    if (!live_banner_pages || pages != live_banner_pages ||
+        !read_matching_snapshot(pages, records, error)) return false;
+    u8 *record = records + BANNER_PAGE * PAGE_RECORD_SIZE;
+    bool changed = false;
+    for (unsigned column = 0; column < SECTORS_PER_PAGE; ++column) {
+        unsigned offset = column * SECTOR_SIZE;
+        if (equal(record + offset, live_banner + offset, SECTOR_SIZE)) continue;
+        for (unsigned i = 0; i < SECTOR_SIZE; ++i) record[offset + i] = live_banner[offset + i];
         regenerate_ecc(record, column);
         changed = true;
     }

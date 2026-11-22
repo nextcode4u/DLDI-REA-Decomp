@@ -39,6 +39,7 @@ enum nrio_raw_mode {
     NRIO_RAW_BANNER_WRITE,
     NRIO_RAW_TABLE_REPAIR,
     NRIO_RAW_SAFE_MODE_INSTALL,
+    NRIO_RAW_SD_BANNER_INSTALL = 0x100,
 };
 
 struct nrio_raw_table_plan {
@@ -63,9 +64,17 @@ bool nrio_recovery_prepare_safe_mode(uint32_t sectors[2]);
 uint16_t nrio_safe_mode_crc16(const uint8_t *data, unsigned size);
 uint32_t nrio_safe_mode_handoff(const uint8_t *payload);
 void discard_live_safe_mode(void);
+bool prepare_sd_banner(uint32_t pages, uint8_t *records, const uint8_t *banner, struct nrio_raw_write_error *error);
+bool install_sd_banner(uint32_t pages, uint8_t *records, struct nrio_raw_write_error *error);
 bool prepare_live_safe_mode(uint32_t pages, uint8_t *records, struct nrio_raw_write_error *error,
                             uint32_t sectors[2]);
 bool nrio_recovery_install_safe_mode(void);
+bool nrio_recovery_check_safe_mode_header(const uint8_t sector[512]);
+bool nrio_recovery_select_safe_mode_payload(const uint8_t sector[512]);
+bool nrio_recovery_prepare_sd_banner(const uint8_t banner[2048]);
+bool nrio_recovery_install_sd_banner(void);
+uint32_t nrio_recovery_backup_pages(void);
+bool nrio_recovery_copy_backup_page(uint32_t page, void *main, void *spare);
 bool nrio_recovery_repair_table(const struct nrio_raw_table_plan *plan);
 bool nrio_recovery_read(uint32_t sector, uint32_t count, void *buffer);
 bool nrio_recovery_write(uint32_t sector, uint32_t count, const void *buffer);

@@ -25,6 +25,8 @@ On a DS or DS Lite with the Slot-2 USB writer, choose a mode with **Up/Down**, t
 
 The older single-mode binaries used in the hardware reports are available in the [archived revision](https://github.com/nextcode4u/DLDI-REA-Decomp/tree/0b09821d66c6e91f2a94383f055720258bcfd1fb/n-card/raw-nand/compiled).
 
+On a DSi with usable internal SD access, the [nrioTool integration](../nrioTool/) adds SD backup and install options for the safe-mode ROM and first banner page.
+
 ### Save a DS session log
 
 The screen reports cart detection, NAND geometry, repair checks, the first USB read and write, progress at each additional 8 MiB, and failures with their LBA or NAND page. A USB NAND session ends with read, write, and error counts. Table repair reports which checks passed or where it stopped.

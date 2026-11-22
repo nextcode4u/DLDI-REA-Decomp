@@ -47,7 +47,8 @@ void nrio_recovery_shutdown(void)
 
 bool nrio_recovery_select_mode(enum nrio_raw_mode mode)
 {
-    if (!geometry.sectors || mode_locked || (unsigned)mode > NRIO_RAW_SAFE_MODE_INSTALL ||
+    if (!geometry.sectors || mode_locked ||
+        ((unsigned)mode > NRIO_RAW_SAFE_MODE_INSTALL && mode != NRIO_RAW_SD_BANNER_INSTALL) ||
         (mode == NRIO_RAW_BANNER_WRITE && !banner_is_armed())) return false;
     active_mode = mode;
     mode_locked = true;
@@ -88,6 +89,20 @@ bool nrio_recovery_install_safe_mode(void)
     if (active_mode != NRIO_RAW_SAFE_MODE_INSTALL || !workspace ||
         write_error.stage != NRIO_RAW_WRITE_NONE) return false;
     return restore_safe_mode(geometry.pages_per_block, workspace, &write_error);
+}
+
+bool nrio_recovery_prepare_sd_banner(const uint8_t banner[2048])
+{
+    if (active_mode != NRIO_RAW_SD_BANNER_INSTALL || !workspace || !banner ||
+        write_error.stage != NRIO_RAW_WRITE_NONE) return false;
+    return prepare_sd_banner(geometry.pages_per_block, workspace, banner, &write_error);
+}
+
+bool nrio_recovery_install_sd_banner(void)
+{
+    if (active_mode != NRIO_RAW_SD_BANNER_INSTALL || !workspace ||
+        write_error.stage != NRIO_RAW_WRITE_NONE) return false;
+    return install_sd_banner(geometry.pages_per_block, workspace, &write_error);
 }
 
 bool nrio_recovery_repair_table(const struct nrio_raw_table_plan *plan)

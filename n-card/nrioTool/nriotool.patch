@@ -1,0 +1,39 @@
+diff --git a/arm9/Makefile b/arm9/Makefile
+index c3250e7..79fab94 100644
+--- a/arm9/Makefile
++++ b/arm9/Makefile
+@@ -19 +19 @@ BUILD    := build
+-SOURCES  := source source/common
++SOURCES  := source source/common source/recovery_nand
+diff --git a/arm9/source/main.cpp b/arm9/source/main.cpp
+index 3d1a9e7..f5ba3f3 100644
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -1041,0 +1042,8 @@ void DoUdiskDump() {
++extern "C" void nrioTool_sd_recovery(int action);
++
++static void DoSDRecovery(int action) {
++	if (!wasDSi || !sdMounted) return;
++	nrioTool_sd_recovery(action);
++	CardInit();
++}
++
+@@ -1052 +1060,5 @@ int UtilityMenu() {
+-	printf("\n"); // printf("Press [Y] write banner to cart\n");
++	if (wasDSi && sdMounted) {
++		printf("[Y] Install DSi safe mode\n");
++		printf("[R] Install SD banner\n");
++		printf("[SELECT] Back up block 0\n");
++	}
+@@ -1054 +1066 @@ int UtilityMenu() {
+-	printf("\n\n\n\n\n\n\n\nPress [B] to go to main menu...\n");
++	printf("\n\nPress [B] to go to main menu...\n");
+@@ -1061,0 +1074,3 @@ int UtilityMenu() {
++			case KEY_Y:		{ if (wasDSi && sdMounted)value = 2; } break;
++			case KEY_R:		{ if (wasDSi && sdMounted)value = 3; } break;
++			case KEY_SELECT:	{ if (wasDSi && sdMounted)value = 5; } break;
+@@ -1299 +1314,3 @@ int main() {
+-					// case 3: { DoBannerWrite(); } break;
++					case 2: { DoSDRecovery(0); } break;
++					case 3: { DoSDRecovery(1); } break;
++					case 5: { DoSDRecovery(2); } break;
