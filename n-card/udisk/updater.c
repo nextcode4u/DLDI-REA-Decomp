@@ -92,6 +92,15 @@ enum udisk_update_result udisk_install_payload(const uint8_t *payload, size_t pa
         address += UDISK_ALLOCATION_BYTES;
     }
 
+    udisk_build_secondary_chunk(allocations, map_buffer);
+
+    return write_and_check(io, UDISK_SECONDARY_MAP_NAND_OFFSET, map_buffer, erase_block_bytes)
+        ? UDISK_UPDATE_OK : UDISK_UPDATE_MAP_VERIFY_FAILED;
+}
+
+void udisk_build_secondary_chunk(const uint32_t allocations[UDISK_ALLOCATION_COUNT],
+                                  uint8_t map_buffer[UDISK_ALLOCATION_BYTES])
+{
     udisk_expand_block_map(allocations, map_buffer);
     for (size_t i = UDISK_MAP_BYTES; i < UDISK_ALLOCATION_BYTES; ++i)
         map_buffer[i] = 0xff;
@@ -100,7 +109,4 @@ enum udisk_update_result udisk_install_payload(const uint8_t *payload, size_t pa
     const uint8_t map_footer[] = {3, 0, 0, 0, 'g', 'a', 'o', 0};
     for (size_t i = 0; i < sizeof(map_footer); ++i)
         map_buffer[UDISK_ALLOCATION_BYTES - sizeof(map_footer) + i] = map_footer[i];
-
-    return write_and_check(io, UDISK_SECONDARY_MAP_NAND_OFFSET, map_buffer, erase_block_bytes)
-        ? UDISK_UPDATE_OK : UDISK_UPDATE_MAP_VERIFY_FAILED;
 }

@@ -318,13 +318,14 @@ class WriteTransportDriver(Driver):
 
 def compare_write_transport(images, load_base):
     requests = ((0, 1), (0, 4), (0, 9), (1, 1), (3, 2), (5, 8), (253, 5), (509, 9))
-    cases = [(sector, count, mapped) for mapped in (False, True) for sector, count in requests]
+    cases = [(pages, sector, count, mapped)
+             for pages in (64, 128) for mapped in (False, True)
+             for sector, count in requests]
     failures = 0
-    for seed, (sector, count, mapped) in enumerate(cases):
+    for seed, (pages, sector, count, mapped) in enumerate(cases):
         results = []
         for binary in images:
             machine = WriteTransportDriver(binary, seed, load_base)
-            pages = 128 if seed & 1 else 64
             shift = 7 if pages == 128 else 6
             machine.set8(0x4dfc, pages)
             machine.set8(0x5af0, pages - 1)

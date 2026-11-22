@@ -45,3 +45,8 @@ python3 scripts/check_c_behavior.py
 ```
 
 The behavior comparison requires Python and Unicorn 2.1.4. Run `cmp -l reference/nrio.dldi compiled-from-c/nrio.dldi` to list the differing bytes at equal file offsets. To inspect the original and C routine addresses, run the SDK's `arm-eabi-nm -n` on `build/matching/nrio.elf` and `build/nrio.elf`. The first link address for both is `0xBF800000`. Subtract it from each symbol address to get a file offset.
+
+
+## DLDI write verification
+
+The regular DLDI and its byte-matching reference keep NAND recovery in the separate [nrioTool integration](../nrioTool/). The differential transport test runs each write request at both supported erase geometries, including requests that cross the 64-page and 128-page block boundaries. The model checks that every requested sector reaches the NAND FIFO and that the write completes without a pending transfer. A physical test of writes and file persistence after power-off remains open.

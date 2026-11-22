@@ -21,6 +21,8 @@ size_t udisk_erase_frames(uint32_t address, uint32_t erase_block_bytes, bool sen
                          uint32_t frames[UDISK_MAX_ERASE_FRAMES]);
 void udisk_expand_block_map(const uint32_t allocations[UDISK_ALLOCATION_COUNT],
                             uint8_t map[UDISK_MAP_BYTES]);
+void udisk_build_secondary_chunk(const uint32_t allocations[UDISK_ALLOCATION_COUNT],
+                                  uint8_t map_buffer[UDISK_ALLOCATION_BYTES]);
 uint32_t udisk_byte_sum(const uint8_t *data, size_t length);
 
 enum udisk_ecc_result {
