@@ -141,7 +141,7 @@ The supplied `dsfireline_spare.bin` covers only the first eight spare records (`
 
 Apache supplied the unmodified and modified DS Linker safe-mode ROMs. The target's main backup maps the unmodified ROM byte for byte from `0x20000`. Apache's patch and the toolkit's patch both change physical NAND pages `0x40` and `0x66` and preserve the eight bytes after the relocated ARM7 payload in emulation. The original DS Linker and Fire Line ARM7 payloads differ by one 32-bit word. The DS Linker waits for `0x1118027E` at `0x027FFE60`. The Fire Line waits for `0x1918027E` at the same address. Emulation confirmed that the DS Linker branches with its own word and keeps waiting with the Fire Line word. Prepare the patch from the target cart's own safe-mode ROM.
 
-The supplied DS Linker spare file is 2,000 bytes (`0x7D0`). All captured bytes from `0x180` onward read as `FF`. A targeted install still needs a complete block-0 spare capture using the erase geometry from that cart's DS log.
+The complete DS Linker capture contains `0x2000` packed spare bytes. The last non-`FF` byte was at `0x17F`. Apache used that capture and the original main dump to test the targeted installer on the unmodified DS Linker. The exported session log reported NAND ID `2514d3ec` and **Safe-mode install verified**, confirming the backup check, block-0 rewrite, and full readback on hardware. DSi boot and the USB safe-mode path with the toolkit-generated patch await separate confirmation.
 
 ### Prepare stock safe mode in the recovery toolkit
 
@@ -159,7 +159,7 @@ python3 inspect_boot.py target-main.bin target-spare.bin --prepare-safe-mode saf
 
 ### Targeted stock safe-mode install
 
-This experimental path uses the Fire Line's verified compact ROM layout and requires both changed sectors to map to erase block 0. It has passed Slot-1 transport emulation. The first physical install still needs a hardware test.
+This experimental path uses the Fire Line's verified compact ROM layout and requires both changed sectors to map to erase block 0. It has passed Slot-1 transport emulation and a verified block-0 install on the DS Linker.
 
 1. Keep a fresh full block-0 backup from the target. For 128-page blocks, capture main offsets `0x00000–0x3FFFF` and packed spare offsets `0x0000–0x1FFF`. For 64-page blocks, capture main offsets `0x00000–0x1FFFF` and packed spare offsets `0x0000–0x0FFF`. The main dump must also cover the mapped safe-mode ROM.
 2. In **Stock safe mode**, choose **Prepare targeted installer**. Save the generated `nrio-stock-safe-mode-installer.nds` privately. It contains the cart's original block-0 data, including the spare records.
