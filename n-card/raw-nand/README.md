@@ -128,6 +128,14 @@ Apache reports an ARM7 payload of `0x38` bytes in the safe-mode ROM and `0x40` b
 
 The proposed test loads the safe-mode ARM7 stub and payload into main RAM. The stub copies exactly `0x38` bytes to the original ARM7 destination and jumps to the original entry point, preserving the following eight bytes. The standard DS header has separate ARM7 entry, load address, and size fields. Whether the Fire Card's loader honors those fields and whether the relocated stub fixes the DSi boot failure are open hardware questions. [GBATEK DS cartridge header](https://problemkaputt.de/gbatek-ds-cartridge-header.htm)
 
+Use the [offline patcher](patch_safe_mode.py) with the original, extracted safe-mode `.nds` and a confirmed free staging address in main RAM. Replace `STAGING_ADDRESS` with that address in hexadecimal.
+
+```sh
+python3 patch_safe_mode.py safe-mode.nds safe-mode-arm7-test.nds --stage-address STAGING_ADDRESS
+```
+
+The patcher checks the header CRC and the original `0x38`-byte ARM7 range. It requires enough padding immediately after that payload, keeps the ROM length and its ARM7 ROM offset, and updates the ARM7 RAM address, entry, size, and header CRC in the new file. It checks for overlap with ARM9 in RAM. Determine the staging address from the actual boot-time memory layout, including buffers used by the first-stage loader. Test the new ROM with the primary table still pointing at safe mode, then check normal launch on DSi and USB safe mode on DS or DS Lite. The patcher works on files only. The original Fire Card safe-mode image and hardware test results are still needed to verify compatibility.
+
 ### Direct uDisk boot test on a working 16 Gbit N-Card
 
 Apache Thunder successfully redirected the primary block table at `0x8000` on a working 16 Gbit N-Card to boot its uDisk section directly, as in the [second-card recovery](#second-card-recovery-and-custom-banner). Apache deliberately put the card into the bricked state, wrote the corrected NAND dump, restored the card's shared-block backup, then reflashed the uDisk section with the XuluMenu installer.
