@@ -128,7 +128,7 @@ For an unbootable N-Card, start the console with the target cart removed and lau
 
 ### Assess recovery using only the target card
 
-Run the [read-only boot inspector](inspect_boot.py) on separate physical main and packed spare dumps from the target card. It reports whether the 16 KiB table regions are blank or identical, checks the page at the typical uDisk start, and lists the state of each spare record in USB sector 0, including exact copies of populated records. It reads the first `0x80800` main bytes and the first `0x200` spare bytes. Table contents still need to be checked against the actual card layout. [Apache Thunder’s block table description](https://gbatemp.net/threads/open-source-flashcart-project-info.665781/page-2)
+Run the [read-only boot inspector](inspect_boot.py) on separate physical main and packed spare dumps from the target card. Choose **Inspect dumps** in the desktop toolkit or run `python3 inspect_boot.py target-main.bin target-spare.bin > recovery-check.txt`. The report compares the first 16 KiB and the following 48 KiB of both candidate regions, checks the compact uDisk header and map entries, and lists the state of each shared spare record. It also flags spare bytes that would trigger the general write preflight. The 64 KiB comparison uses the maximum table size Apache Thunder reported. Differences outside the image's active entries do not establish the full table extent. The report leaves both dumps untouched. [Apache Thunder’s block table description](https://gbatemp.net/threads/open-source-flashcart-project-info.665781/page-2)
 
 ```sh
 python3 inspect_boot.py target-main.bin target-spare.bin
@@ -137,6 +137,8 @@ python3 inspect_boot.py target-main.bin target-spare.bin
 - **Primary table damaged, secondary table and uDisk intact.** Try the [same-cart repair](#repair-using-only-the-target-cart) on the supported layout. The [16 Gbit test](#direct-udisk-boot-test-on-a-working-16-gbit-n-card) verified the resulting boot path using a corrected image and a subsequent uDisk reflash. The table-only repair still needs a hardware test.
 - **uDisk damaged.** A compatible installer can supply the uDisk section, as in the [DS Linker recovery](#third-card-recovery-and-spare-area-readback). The boot table still needs to point at the installed copy.
 - **Early boot data damaged.** Keep surviving main and spare bytes from the target. An earlier backup from that same cart can supply missing data. The [ARM7 copies](#arm7-boot-code-in-the-spare-area) and [repeated Blowfish bytes](#blowfish-data-in-the-spare-area) are potential sources for partial damage. A complete reconstruction of erased boot records without a backup remains unverified. A blank page 0 spare record alone is normal on the observed working 16 Gbit card.
+
+For the offline check, save at least the first `0x50000` main bytes and the first `0x200` packed spare bytes from the same cart. Include the mapped uDisk image in the main backup to check its header and ARM entry sectors. A backup ending at `0x80000` can compare both table regions and inspect the spare records. It may end before the mapped uDisk header, which the report will flag. On an 8 Gbit cart that the DS repair rejects, keep the pre-brick backups and share the offline report and, if available, the DS session log. The DS writer still requires the observed 16 Gbit spare layout.
 
 ## Hardware results
 

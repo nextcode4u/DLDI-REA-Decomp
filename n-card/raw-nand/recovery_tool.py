@@ -53,7 +53,7 @@ class RecoveryTool:
         self.report = ScrolledText(recovery, width=76, height=16, wrap="none", state="disabled")
         self.report.grid(row=4, column=0, columnspan=3, sticky="nsew")
         self.set_report("Select the target dumps and choose Inspect dumps.\n"
-                        "The table export is a candidate for offline review.")
+                        "Inspection compares both table regions and checks the spare layout.")
 
         banner.columnconfigure(1, weight=1)
         self.file_field(banner, 0, "Target spare dump", self.spare_dump)
@@ -157,7 +157,7 @@ class RecoveryTool:
             report = inspect_boot(main, spare)
             self.set_report(report)
             self.log(report)
-            self.status.set("Inspection complete")
+            self.status.set("Inspection complete. The report is in the session log.")
         except (OSError, ValueError) as error:
             self.set_report(str(error))
             self.show_error(error)
