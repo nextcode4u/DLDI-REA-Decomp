@@ -7,7 +7,7 @@ import struct
 import zlib
 from pathlib import Path
 
-from patch_safe_mode import STOCK_STAGE_ADDRESS, is_compact_safe_mode, patch_stock_rom
+from patch_safe_mode import STOCK_STAGE_ADDRESS, crc16, is_compact_safe_mode, patch_stock_rom
 
 
 BOOT_ROM_HEADER = 0x400
@@ -233,6 +233,43 @@ def inspect_safe_mode(main_dump, spare_dump, original_path, patched_path, pages_
     return report + "\nMapped bytes match the supplied original ROM. No flash image was created."
 
 
+def inspect_safe_mode_replacement(main_dump, spare_dump, original_path, replacement_path,
+                                  pages_per_block):
+    reference = original_path.read_bytes()
+    replacement = replacement_path.read_bytes()
+    if len(replacement) < SECTOR_SIZE or not is_compact_safe_mode(replacement):
+        raise ValueError("Replacement needs a compact DS ROM header.")
+    if replacement[0x12] or crc16(replacement[:0x15E]) != struct.unpack_from("<H", replacement, 0x15E)[0]:
+        raise ValueError("Replacement must be a DS-mode ROM with a valid header CRC.")
+
+    used, = struct.unpack_from("<I", replacement, 0x80)
+    if not SECTOR_SIZE <= used <= len(replacement):
+        raise ValueError("Replacement declared size is outside the file.")
+    for cpu, header_offset in (("ARM9", 0x20), ("ARM7", 0x30)):
+        source, _, _, length = struct.unpack_from("<4I", replacement, header_offset)
+        if source < SECTOR_SIZE or not length or source + length > used:
+            raise ValueError(f"Replacement {cpu} section is outside the declared ROM.")
+
+    original, addresses = load_primary_rom(main_dump, reference)
+    capacity = len(addresses) * MAPPED_BLOCK_SIZE
+    if used > capacity:
+        raise ValueError(f"Replacement needs 0x{used:X} bytes. The original ROM only establishes "
+                         f"0x{capacity:X} mapped bytes.")
+    if used > len(original):
+        # Growth can only use the last block already mapped by the original ROM.
+        with main_dump.open("rb") as source:
+            source.seek(addresses[-1] + len(original) % MAPPED_BLOCK_SIZE)
+            tail = source.read(used - len(original))
+        if len(tail) != used - len(original):
+            raise ValueError("Main backup ends before the replacement's mapped tail.")
+        original.extend(tail)
+
+    report = describe_safe_mode(main_dump, spare_dump, original[:used], addresses,
+                                replacement[:used], pages_per_block)
+    return (f"Verified mapped capacity from the original ROM: 0x{capacity:X} bytes.\n"
+            f"{report}\nRead-only layout check. Bootability and spare format were not verified.")
+
+
 def prepare_stock_safe_mode(main_dump, spare_dump, pages_per_block):
     original, addresses = load_primary_rom(main_dump)
     patched, (source, end, destination, entry, _) = patch_stock_rom(original)
@@ -323,13 +360,15 @@ def main():
     safe_mode.add_argument("--safe-mode-rom", type=Path, help="original safe-mode ROM from the target cart")
     safe_mode.add_argument("--prepare-safe-mode", type=Path, metavar="OUTPUT",
                            help="extract and patch the stock safe-mode ROM from the main dump")
-    parser.add_argument("--patched-rom", type=Path, help="compare a patched copy and list only changed erase blocks")
+    candidate = parser.add_mutually_exclusive_group()
+    candidate.add_argument("--patched-rom", type=Path, help="compare a patched copy and list only changed erase blocks")
+    candidate.add_argument("--replacement-rom", type=Path, help="check a different ROM against the original mapping")
     parser.add_argument("--pages-per-block", type=int, choices=(64, 128), help="erase-buffer page count from the DS log")
     args = parser.parse_args()
     if (args.safe_mode_rom or args.prepare_safe_mode) and args.pages_per_block is None:
         parser.error("safe-mode actions require --pages-per-block from the DS log")
-    if args.patched_rom and not args.safe_mode_rom:
-        parser.error("--patched-rom requires --safe-mode-rom")
+    if (args.patched_rom or args.replacement_rom) and not args.safe_mode_rom:
+        parser.error("--patched-rom and --replacement-rom each require --safe-mode-rom")
     if args.pages_per_block and not (args.safe_mode_rom or args.prepare_safe_mode):
         parser.error("--pages-per-block requires a safe-mode action")
     try:
@@ -343,6 +382,9 @@ def main():
             with args.prepare_safe_mode.open("xb") as output:
                 output.write(patched)
             print(f"Saved {args.prepare_safe_mode}\n{report}")
+        elif args.replacement_rom:
+            print(inspect_safe_mode_replacement(args.main_dump, args.spare_dump, args.safe_mode_rom,
+                                                args.replacement_rom, args.pages_per_block))
         elif args.safe_mode_rom:
             print(inspect_safe_mode(args.main_dump, args.spare_dump, args.safe_mode_rom,
                                     args.patched_rom, args.pages_per_block))

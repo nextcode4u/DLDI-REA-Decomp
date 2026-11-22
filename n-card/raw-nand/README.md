@@ -61,7 +61,7 @@ Recomputing the existing NRIO ECC over the supplied DS Linker main file does not
 
 The archived N-Card package contains `udisk.nds`, `xmenu.dat`, the host USB utility and DLLs, and a batch file invoking `USBNDS.exe udisk.nds 2 1`. The first `0x92400` bytes of the packaged uDisk differ from the archived installed uDisk dump at only two offsets, `0x10F16` and `0x2878D`. The separate recovered `update.nds` is a BIOS updater. It contains a compact uDisk header at file offset `0x24200`. [N-Card 1.45 package](https://linfoxdomain.com/nintendo/ds/dl/NCard_v1.45_v2.53_v25.zip) · [Recovered updater and installed uDisk](https://github.com/m4x10187/fire-card-archive/tree/ced86434054e47dcca8d4e90efd25cc92f88d688/N-Card/Dumps)
 
-The stock BIOS updater's ARM9 routine at `0x020006DC` starts its uDisk allocation scan at main NAND `0x80000`. It expands each 128 KiB allocation into eight addresses spaced 16 KiB apart, then writes the secondary table at `0x40000`. Its erase routine at `0x020011A0` and page program routines at `0x0200287C`, `0x02002B64`, and `0x02002F58` return before issuing a NAND command when the address is below `0x40000`. ARM emulation confirmed the boundary using both supported erase geometries and confirmed the table expansion with two noncontiguous allocations. The erase sequence above the boundary starts with `D1 61 60`; it uses a `D1 52` address frame and ends with `D1 61 D0`. These paths do not provision the first physical erase block.
+The stock BIOS updater's ARM9 routine at `0x020006DC` starts its uDisk allocation scan at main NAND `0x80000`. It expands each 128 KiB allocation into eight addresses spaced 16 KiB apart, then writes the secondary table at `0x40000`. Its erase routine at `0x020011A0` and page program routines at `0x0200287C`, `0x02002B64`, and `0x02002F58` return before issuing a NAND command when the address is below `0x40000`. ARM emulation confirmed the boundary using both supported erase geometries and confirmed the table expansion with two noncontiguous allocations. The erase sequence above the boundary starts with `D1 61 60`; it uses a `D1 52` address frame and ends with `D1 61 D0`. These paths do not provision the first physical erase block. The address check, erase command encoder, map builder, and readback byte sum are available as [readable C](../udisk/).
 
 Apache Thunder's published XuluMenu updater ARM9 binary is the same length as the recovered stock ARM9, with only two differing bytes in the normal edition. The bootleg edition redirects the first payload allocation to `0x40000` and branches out before secondary table generation. These observations apply to the archived binaries. The custom updater that Apache used to clear the shared boot region was a separate build. [XuluMenu updater files](https://github.com/ApacheThunder/XuluMenu/tree/7ceabcbc9331f84a8c4fcde38b6f60193405ee8a/XulumenuUpdator)
 
@@ -209,6 +209,17 @@ To prepare the same file from the command line, use the page count from the targ
 ```sh
 python3 inspect_boot.py target-main.bin target-spare.bin --prepare-safe-mode safe-mode-dsi-test.nds --pages-per-block 128
 ```
+
+### Check whether a different safe-mode ROM fits
+
+Use the physical main and packed spare dumps, the stock ROM extracted from the target, and a proposed replacement.
+
+```sh
+python3 inspect_boot.py main.bin spare.bin --safe-mode-rom original.nds \
+  --replacement-rom replacement.nds --pages-per-block 128
+```
+
+The command verifies the replacement's compact header and CRC, checks both ARM sections against the declared ROM length, and matches the stock ROM to its physical map. A larger replacement can use the unused tail of the last already-mapped 16 KiB block. The checker lists the physical erase blocks that would change and flags missing main or spare coverage. It works offline and produces a report. Spare format, bootability, and on-console writes across multiple erase blocks require separate verification.
 
 ### Targeted stock safe-mode install
 
