@@ -98,6 +98,15 @@ The build produces `nrio-usb-disk.nds` and `build/nrio-usb-disk.elf`. The ROM is
 
 ## Boot layout notes
 
+Apache Thunder identified a four-byte value at main ROM header offsets `0x08–0x0B`. In the raw NAND screenshot, the `DSGBA PA` header begins at `0x400`, so the same bytes appear at NAND offsets `0x408–0x40B`. The standard DS header places these bytes at the end of the title field. The `DSGB` game code follows at header offset `0x0C`. [GBATEK DS cartridge header](https://problemkaputt.de/gbatek-ds-cartridge-header.htm)
+
+| Sample reported by Apache Thunder | Bytes on disk | Little-endian word |
+| --- | --- | --- |
+| Branded N-Card, reported on 8 and 16 Gbit carts | `00 00 83 10` | `0x10830000` |
+| Pokémon Mystery Dungeon bootleg, capacity unconfirmed | `00 00 43 10` | `0x10430000` |
+
+The values differ by `0x00C00000` (bits 22 and 23). Apache reports that the boot initialization uses this area. The meaning of those bits and their relationship to the NAND ID, geometry, or capacity remain unverified. The offline inspector reports the value for a matching header. Keep the original bytes when preparing same-cart recovery data.
+
 Apache Thunder described two layouts used by different generations of cards.
 
 | Layout | Block table at `0x8000` | Block table at `0x40000` |

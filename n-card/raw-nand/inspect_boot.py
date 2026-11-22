@@ -7,6 +7,7 @@ import struct
 from pathlib import Path
 
 
+BOOT_ROM_HEADER = 0x400
 PRIMARY_TABLE = 0x8000
 SECONDARY_TABLE = 0x40000
 TABLE_SIZE = 0x4000
@@ -103,6 +104,14 @@ def inspect_boot(main_dump, spare_dump):
     primary = main_data[PRIMARY_TABLE:PRIMARY_TABLE + REPORTED_MAX_TABLE_SIZE]
     secondary = main_data[SECONDARY_TABLE:SECONDARY_TABLE + REPORTED_MAX_TABLE_SIZE]
     lines = ["Main NAND (reported uDisk-era offsets)", f"  Page 0 at 0x0000  {describe(main_data[:PAGE_SIZE])}"]
+    header = main_data[BOOT_ROM_HEADER:BOOT_ROM_HEADER + 0x10]
+    if header[:8] == b"DSGBA PA" and header[0x0C:0x10] == b"DSGB":
+        title_bytes = header[8:12]
+        word = int.from_bytes(title_bytes, "little")
+        lines.append(f"  DSGB title bytes at 0x{BOOT_ROM_HEADER + 8:04X}  "
+                     f"{title_bytes.hex(' ').upper()} (LE 0x{word:08X})")
+    else:
+        lines.append(f"  No DSGBA PA / DSGB header match at 0x{BOOT_ROM_HEADER:04X}.")
     for offset, table in ((PRIMARY_TABLE, primary), (SECONDARY_TABLE, secondary)):
         lines.append(f"  0x{offset:05X}  64 KiB candidate region  {describe(table)}")
         lines.append(f"    SHA-256 {hashlib.sha256(table).hexdigest()}")
