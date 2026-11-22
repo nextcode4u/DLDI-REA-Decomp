@@ -120,6 +120,14 @@ In the newer layout, the safe-mode ROM can update uDisk from a PC through the Sl
 
 To enter USB update mode on a DS or DS Lite, insert the USB writer into Slot-2 and connect it to the PC. Hold **L + R + A + B + D-pad Up** while launching the N-Card. Keep holding the buttons until **USB SAFE BLOCK** appears on the bottom screen. The PC updater can then run even if normal uDisk fails to boot. [Apache Thunder’s XuluMenu flashing instructions](https://github.com/ApacheThunder/XuluMenu#flashing-instructions)
 
+### DS Fire Card safe-mode ARM7 experiment
+
+Apache Thunder plans to update only the safe-mode ROM to test whether it can boot on a DSi while retaining the USB update path on a DS or DS Lite. Apache recalls that this ROM region can be written while preserving the first NAND erase block. The earlier uDisk updater did not write the safe-mode ROM correctly on that setup.
+
+Apache reports an ARM7 payload of `0x38` bytes in the safe-mode ROM and `0x40` bytes in the main ROM. The hypothesis is that the first-stage ROM leaves eight bytes of handoff data at the end of the ARM7 destination and that loading safe mode on a DSi overwrites them. The role of those bytes and the cause of the suspected overwrite are unverified.
+
+The proposed test loads the safe-mode ARM7 stub and payload into main RAM. The stub copies exactly `0x38` bytes to the original ARM7 destination and jumps to the original entry point, preserving the following eight bytes. The standard DS header has separate ARM7 entry, load address, and size fields. Whether the Fire Card's loader honors those fields and whether the relocated stub fixes the DSi boot failure are open hardware questions. [GBATEK DS cartridge header](https://problemkaputt.de/gbatek-ds-cartridge-header.htm)
+
 ### Direct uDisk boot test on a working 16 Gbit N-Card
 
 Apache Thunder successfully redirected the primary block table at `0x8000` on a working 16 Gbit N-Card to boot its uDisk section directly, as in the [second-card recovery](#second-card-recovery-and-custom-banner). Apache deliberately put the card into the bricked state, wrote the corrected NAND dump, restored the card's shared-block backup, then reflashed the uDisk section with the XuluMenu installer.
