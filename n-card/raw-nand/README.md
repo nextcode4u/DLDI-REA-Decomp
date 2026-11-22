@@ -19,7 +19,7 @@ On a DS or DS Lite with the Slot-2 USB writer, choose a mode with **Up/Down**, t
 | Spare: recovery write | Write packed spare records, subject to preflight |
 | Banner: prepared ROM only | Write the prepared page 4 payload after checking the target spare snapshot |
 | Repair primary boot table | On-console repair using the target cart's surviving uDisk mapping |
-| Install stock safe mode | On-console install using a prepared ROM with the target's complete block-0 snapshot |
+| Install stock safe mode | Prepare and install the DSi patch on console, or install from a desktop-prepared snapshot |
 | Check recovery only | Run the same preflight with read-only NAND access and export the result |
 | Check safe mode | Detect the stock ARM7 layout or a recognized DSi relocation patch using read-only NAND access |
 
@@ -166,7 +166,13 @@ python3 inspect_boot.py target-main.bin target-spare.bin --prepare-safe-mode saf
 
 ### Targeted stock safe-mode install
 
-This path supports the compact ROM layout found on the Fire Line and DS Linker and requires both changed sectors to map to erase block 0. The DS Linker passed installation, full block-0 readback, and boot on DS Lite and DSi.
+This path supports the compact ROM layout found on the Fire Line and DS Linker and requires both changed sectors to map to erase block 0. The desktop-prepared workflow passed installation, full block-0 readback, and boot on DS Lite and DSi on the DS Linker. The on-console preparation workflow has passed emulation using the Fire Line and DS Linker samples and still needs a hardware test.
+
+#### Prepare and install on the DS
+
+Use the generic `nrio-raw-toolkit.nds` on a DS or DS Lite. Keep a fresh main and spare backup on another device before installing. At the detection screen, insert the target cart and choose **Install stock safe mode**. The app reads all of block 0 and prepares the DSi ARM7 patch in RAM. It checks the original header, ARM7 code, available padding, and mapping, then shows both sector addresses. Press **B** to cancel or hold **L + R** and press **A** to install. The app rereads the block and verifies it against that snapshot before erase, then verifies the full rewrite. The RAM snapshot is discarded when the mode ends. Use **Check safe mode** afterwards or boot the cart on a DSi.
+
+#### Use a desktop-prepared installer
 
 1. Keep a fresh full block-0 backup from the target. For 128-page blocks, capture main offsets `0x00000–0x3FFFF` and packed spare offsets `0x0000–0x1FFF`. For 64-page blocks, capture main offsets `0x00000–0x1FFFF` and packed spare offsets `0x0000–0x0FFF`. The main dump must also cover the mapped safe-mode ROM.
 2. In **Stock safe mode**, choose **Prepare targeted installer**. Save the generated `nrio-stock-safe-mode-installer.nds` privately. It contains the cart's original block-0 data, including the spare records.

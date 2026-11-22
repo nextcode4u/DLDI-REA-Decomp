@@ -99,16 +99,14 @@ static bool live_udisk(uint32_t capacity)
     return true;
 }
 
-static bool approve_repair(void)
+static bool approve_rewrite(const char *title, const char *description)
 {
     consoleClear();
-    printf("Repair primary boot table\n\n"
-           "Using this cart's uDisk table.\n"
-           "Direct boot skips safe mode.\n"
+    printf("%s\n\n%s\n"
            "Rewrites boot erase block.\n"
            "Keep main and spare backups.\n\n"
            "Hold L + R and press A.\n"
-           "B: cancel\n");
+           "B: cancel\n", title, description);
     while (1) {
         swiWaitForVBlank();
         scanKeys();
@@ -179,7 +177,8 @@ void boot_repair(bool check_only)
         session_log("Repair would copy 16 KiB from\n0x40000 to 0x8000. Check only.");
         return;
     }
-    if (!approve_repair()) {
+    if (!approve_rewrite("Repair primary boot table",
+                         "Using this cart's uDisk table.\nDirect boot skips safe mode.")) {
         session_log("Repair cancelled.");
         return;
     }
@@ -207,13 +206,30 @@ void boot_repair(bool check_only)
 void install_safe_mode(void)
 {
     struct nrio_raw_info info;
-    if (!nrio_recovery_safe_mode_ready()) {
-        session_log("Prepare a safe-mode installer\nusing the desktop toolkit.");
-        return;
-    }
     if (!select_view(NRIO_RAW_SAFE_MODE_INSTALL, &info) ||
         !nrio_recovery_bind_workspace(raw_workspace, sizeof(raw_workspace))) {
         session_log("Could not initialize the installer.");
+        return;
+    }
+    const char *description = "Using the prepared backup.";
+    char plan_text[80];
+    if (!nrio_recovery_safe_mode_ready()) {
+        uint32_t sectors[2];
+        session_log("Reading block 0 to prepare\nthe stock safe-mode patch.");
+        if (!nrio_recovery_prepare_safe_mode(sectors)) {
+            struct nrio_raw_write_error error;
+            nrio_recovery_get_write_error(&error);
+            session_log("Could not prepare stock safe mode.");
+            session_log_write_error(&error);
+            return;
+        }
+        snprintf(plan_text, sizeof(plan_text), "Prepared on this DS.\nSectors 0x%lX and 0x%lX.",
+                 (unsigned long)sectors[0], (unsigned long)sectors[1]);
+        session_log("%s", plan_text);
+        description = plan_text;
+    }
+    if (!approve_rewrite("Install stock safe mode", description)) {
+        session_log("Safe-mode install cancelled.");
         return;
     }
     session_log("NAND ID %08lx. Checking the\nentire block-0 backup.",
@@ -229,25 +245,6 @@ void install_safe_mode(void)
     session_log("Safe-mode install verified.\nRestart on the DSi to test boot.");
 }
 
-
-static uint16_t safe_mode_crc16(const uint8_t *data, unsigned size)
-{
-    uint16_t crc = 0xffff;
-    for (unsigned i = 0; i < size; ++i) {
-        crc ^= data[i];
-        for (unsigned bit = 0; bit < 8; ++bit)
-            crc = (crc >> 1) ^ (crc & 1 ? 0xa001 : 0);
-    }
-    return crc;
-}
-
-static uint32_t safe_mode_handoff(const uint8_t *payload)
-{
-    uint32_t word = read_le32(payload + 0x34);
-    // The Fire Line and DS Linker bodies differ only in this handoff word.
-    if (safe_mode_crc16(payload, 0x34) != 0x4b78) return 0;
-    return word == 0x1918027e || word == 0x1118027e ? word : 0;
-}
 
 enum safe_mode_status read_safe_mode_status(struct safe_mode_info *info)
 {
@@ -267,7 +264,7 @@ enum safe_mode_status read_safe_mode_status(struct safe_mode_info *info)
     if (!nrio_recovery_read(first / SECTOR_BYTES, 1, sector)) return SAFE_MODE_UNREADABLE;
     if (read_le32(sector) != 0xea00002e || read_le32(sector + 0x0c) != 0x23232323 ||
         sector[0x12] != 0 || read_le32(sector + 0x84) != SECTOR_BYTES ||
-        safe_mode_crc16(sector, 0x15e) != (sector[0x15e] | sector[0x15f] << 8))
+        nrio_safe_mode_crc16(sector, 0x15e) != (sector[0x15e] | sector[0x15f] << 8))
         return SAFE_MODE_UNKNOWN;
 
     uint32_t source = read_le32(sector + 0x30), entry = read_le32(sector + 0x34);
@@ -292,17 +289,17 @@ enum safe_mode_status read_safe_mode_status(struct safe_mode_info *info)
     if (!nrio_recovery_read(arm7_sector, 1, sector)) return SAFE_MODE_UNREADABLE;
 
     if (stock) {
-        info->handoff = safe_mode_handoff(sector);
+        info->handoff = nrio_safe_mode_handoff(sector);
         return info->handoff ? SAFE_MODE_STOCK : SAFE_MODE_UNKNOWN;
     }
     // Compare the entire stub prefix, including addresses, before checking its payload.
-    if (safe_mode_crc16(sector, 0x6c) == 0x1a2d) {
-        info->handoff = safe_mode_handoff(sector + 0x6c);
+    if (nrio_safe_mode_crc16(sector, 0x6c) == 0x1a2d) {
+        info->handoff = nrio_safe_mode_handoff(sector + 0x6c);
         return info->handoff ? SAFE_MODE_TOOLKIT : SAFE_MODE_UNKNOWN;
     }
-    if (safe_mode_crc16(sector, 0x3c) == 0x2382 &&
+    if (nrio_safe_mode_crc16(sector, 0x3c) == 0x2382 &&
         read_le32(sector + 0x74) == 0x38 && read_le32(sector + 0x78) == STOCK_ADDRESS) {
-        info->handoff = safe_mode_handoff(sector + 0x3c);
+        info->handoff = nrio_safe_mode_handoff(sector + 0x3c);
         return info->handoff ? SAFE_MODE_APACHE : SAFE_MODE_UNKNOWN;
     }
     return SAFE_MODE_UNKNOWN;

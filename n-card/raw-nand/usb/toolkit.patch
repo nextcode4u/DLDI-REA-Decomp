@@ -9,7 +9,7 @@ index 241e210..0aa86ee 100644
 -SOURCES_S	:= $(shell find -L $(SOURCEDIRS) -name "*.s")
 +SOURCES_S	:= $(filter-out source/dldi32k.s,$(shell find -L $(SOURCEDIRS) -name "*.s"))
 diff --git a/source/main.c b/source/main.c
-index 7138d36..8988be6 100644
+index 7138d36..aefd60f 100644
 --- a/source/main.c
 +++ b/source/main.c
 @@ -31 +30,0 @@
@@ -109,7 +109,7 @@ index 7138d36..8988be6 100644
 +      if (down & KEY_A) {
 +        if (mode < NRIO_RAW_MAIN_PROTECTED || mode == NRIO_RAW_TABLE_REPAIR ||
 +            mode == CHECK_RECOVERY || mode == CHECK_SAFE_MODE ||
-+            (mode == NRIO_RAW_SAFE_MODE_INSTALL && !nrio_recovery_safe_mode_ready()) ||
++            mode == NRIO_RAW_SAFE_MODE_INSTALL ||
 +            confirm_write(mode)) {
 +          consoleClear();
 +          session_log("Mode: %s", mode_names[mode]);

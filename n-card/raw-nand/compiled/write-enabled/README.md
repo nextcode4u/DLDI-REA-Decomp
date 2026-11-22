@@ -6,7 +6,7 @@ These builds can erase and rewrite physical NAND. A wrong image or offset, a fai
 
 The [banner mode](banner-only/) accepts a single page-4 write when the toolkit ROM is prepared with matching target spare records and the exact replacement payload.
 
-The [stock safe-mode installer](../../README.md#targeted-stock-safe-mode-install) uses this build as a template. The desktop toolkit prepares a private copy with the target's full erase-block snapshot. The DS Linker passed installation and block-0 readback, then booted normally on DS Lite and DSi.
+The [stock safe-mode installer](../../README.md#targeted-stock-safe-mode-install) can prepare the patch directly on a DS or DS Lite. The desktop toolkit can also prepare a private installer with the target's full erase-block snapshot. The DS Linker passed installation and block-0 readback, then booted normally on DS Lite and DSi.
 
 Use **Check safe mode** to identify a [stock or patched ROM](../../README.md#identify-the-safe-mode-patch-on-a-cart) with read-only NAND access.
 

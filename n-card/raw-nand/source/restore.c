@@ -230,34 +230,163 @@ static const u8 *main_sector(const u8 *records, u32 sector)
            sector % SECTORS_PER_PAGE * SECTOR_SIZE;
 }
 
-static bool safe_mode_locations_match(const u8 *records, u32 sectors)
+enum { SAFE_MODE_ROM_BLOCK = 0x4000, SAFE_MODE_MIN_ADDRESS = 0x18000,
+       SAFE_MODE_STOCK_RAM = 0x03800000, SAFE_MODE_STAGE_RAM = 0x02380000,
+       SAFE_MODE_PAYLOAD_BYTES = 0x38 };
+
+static bool live_safe_mode_plan;
+
+void discard_live_safe_mode(void)
 {
-    enum { MAP_BLOCK = 0x4000, MIN_ROM_SECTOR = 0x18000 / SECTOR_SIZE };
-    u32 header_sector = safe_mode_plan.sectors[0];
-    u32 arm7_sector = safe_mode_plan.sectors[1];
-    if (header_sector < MIN_ROM_SECTOR || header_sector >= sectors ||
-        arm7_sector < MIN_ROM_SECTOR || arm7_sector >= sectors || arm7_sector == header_sector)
-        return false;
+    if (live_safe_mode_plan) safe_mode_plan.pages = 0;
+    live_safe_mode_plan = false;
+}
+
+static bool safe_mode_locations(const u8 *records, u32 sectors, u32 locations[2])
+{
     const u8 *table = main_sector(records, NRIO_RAW_PRIMARY_TABLE / SECTOR_SIZE);
-    const u8 *header = main_sector(records, header_sector);
     const u8 *before_table = main_sector(records, NRIO_RAW_PRIMARY_TABLE / SECTOR_SIZE - 1);
-    if (load_word(before_table + SECTOR_SIZE - 4) == UINT32_C(0x45464151) ||
-        load_word(table) != header_sector * SECTOR_SIZE ||
-        load_word(header) != UINT32_C(0xea00002e) ||
+    u32 first = load_word(table);
+    if (first < SAFE_MODE_MIN_ADDRESS || first / SECTOR_SIZE >= sectors ||
+        first % SAFE_MODE_ROM_BLOCK ||
+        load_word(before_table + SECTOR_SIZE - 4) == UINT32_C(0x45464151))
+        return false;
+
+    u32 header_sector = first / SECTOR_SIZE;
+    const u8 *header = main_sector(records, header_sector);
+    if (load_word(header) != UINT32_C(0xea00002e) ||
         load_word(header + 0x0c) != UINT32_C(0x23232323) ||
-        load_word(header + 0x84) != 0x200 ||
-        load_word(header + 0x38) != UINT32_C(0x03800000) ||
-        load_word(header + 0x3c) != 0x38) return false;
+        load_word(header + 0x84) != SECTOR_SIZE ||
+        load_word(header + 0x38) != SAFE_MODE_STOCK_RAM ||
+        load_word(header + 0x3c) != SAFE_MODE_PAYLOAD_BYTES) return false;
 
     u32 source = load_word(header + 0x30);
     u32 size = load_word(header + 0x80);
-    u32 entry_offset = source / MAP_BLOCK * sizeof(u32);
+    u32 entry_offset = source / SAFE_MODE_ROM_BLOCK * sizeof(u32);
     if (source < SECTOR_SIZE || source % SECTOR_SIZE || source >= size ||
         size - source < SECTOR_SIZE || entry_offset >= NRIO_RAW_TABLE_BYTES) return false;
     u32 entry_sector = (NRIO_RAW_PRIMARY_TABLE + entry_offset) / SECTOR_SIZE;
     u32 mapped = load_word(main_sector(records, entry_sector) + entry_offset % SECTOR_SIZE);
-    return mapped < sectors * SECTOR_SIZE && mapped % MAP_BLOCK == 0 &&
-           mapped + source % MAP_BLOCK == arm7_sector * SECTOR_SIZE;
+    if (mapped < SAFE_MODE_MIN_ADDRESS || mapped / SECTOR_SIZE >= sectors ||
+        mapped % SAFE_MODE_ROM_BLOCK) return false;
+
+    u32 arm7_sector = (mapped + source % SAFE_MODE_ROM_BLOCK) / SECTOR_SIZE;
+    if (arm7_sector >= sectors || arm7_sector == header_sector) return false;
+    locations[0] = header_sector;
+    locations[1] = arm7_sector;
+    return true;
+}
+
+uint16_t nrio_safe_mode_crc16(const uint8_t *data, unsigned size)
+{
+    uint16_t crc = 0xffff;
+    for (unsigned i = 0; i < size; ++i) {
+        crc ^= data[i];
+        for (unsigned bit = 0; bit < 8; ++bit)
+            crc = (crc >> 1) ^ (crc & 1 ? 0xa001 : 0);
+    }
+    return crc;
+}
+
+uint32_t nrio_safe_mode_handoff(const uint8_t *payload)
+{
+    uint32_t word = load_word(payload + 0x34);
+    // The Fire Line and DS Linker bodies differ only in this handoff word.
+    if (nrio_safe_mode_crc16(payload, 0x34) != 0x4b78) return 0;
+    return word == 0x1918027e || word == 0x1118027e ? word : 0;
+}
+
+static bool safe_mode_slot_available(const u8 *header)
+{
+    u32 source = load_word(header + 0x30);
+    u32 size = load_word(header + 0x80);
+    u32 arm9_ram = load_word(header + 0x28), arm9_size = load_word(header + 0x2c);
+    if (header[0x12] || load_word(header + 0x34) != SAFE_MODE_STOCK_RAM ||
+        nrio_safe_mode_crc16(header, 0x15e) != (header[0x15e] | header[0x15f] << 8) ||
+        !arm9_size || arm9_ram < 0x02000000 || arm9_ram >= 0x023bfe00 ||
+        arm9_size > 0x023bfe00 - arm9_ram ||
+        (arm9_ram < SAFE_MODE_STAGE_RAM + SECTOR_SIZE && arm9_ram + arm9_size > SAFE_MODE_STAGE_RAM))
+        return false;
+
+    // The two known compact ROMs have no FAT payloads.
+    if (load_word(header + 0x4c)) return false;
+    static const u8 sections[][2] = {
+        {0x20, 0x2c}, {0x40, 0x44}, {0x50, 0x54}, {0x58, 0x5c},
+    };
+    for (unsigned i = 0; i < sizeof(sections) / sizeof(sections[0]); ++i) {
+        u32 offset = load_word(header + sections[i][0]);
+        u32 length = load_word(header + sections[i][1]);
+        if (length && (offset < SECTOR_SIZE || offset >= size || length > size - offset ||
+                       (offset < source + SECTOR_SIZE && offset + length > source)))
+            return false;
+    }
+    u32 debug = load_word(header + 0x164);
+    u32 banner = load_word(header + 0x68);
+    return !debug && (!banner || (banner >= source + SECTOR_SIZE && banner < size));
+}
+
+static void store_safe_mode_word(volatile u8 *out, u32 word)
+{
+    for (unsigned i = 0; i < 4; ++i) out[i] = (u8)(word >> (i * 8));
+}
+
+bool prepare_live_safe_mode(u32 pages, u8 *records, struct nrio_raw_write_error *error,
+                            u32 locations[2])
+{
+    if (pages != 64 && pages != 128)
+        return fail_write(error, NRIO_RAW_WRITE_SAFE_MODE_PLAN, 0, pages);
+    for (u32 i = 0; i < pages; ++i) {
+        if (!read_page(i, records + i * PAGE_RECORD_SIZE))
+            return fail_write(error, NRIO_RAW_WRITE_READ_BLOCK, i, 0);
+    }
+    if (!safe_mode_locations(records, pages * SECTORS_PER_PAGE, locations))
+        return fail_write(error, NRIO_RAW_WRITE_SAFE_MODE_PLAN, 0, 0);
+    const u8 *header = main_sector(records, locations[0]);
+    const u8 *payload = main_sector(records, locations[1]);
+    if (!safe_mode_slot_available(header) || !nrio_safe_mode_handoff(payload))
+        return fail_write(error, NRIO_RAW_WRITE_SAFE_MODE_PLAN, locations[1] / SECTORS_PER_PAGE, 0);
+
+    u8 padding = payload[SAFE_MODE_PAYLOAD_BYTES];
+    if (padding != 0 && padding != 0xff)
+        return fail_write(error, NRIO_RAW_WRITE_SAFE_MODE_PLAN, locations[1] / SECTORS_PER_PAGE, 0);
+    for (unsigned i = SAFE_MODE_PAYLOAD_BYTES; i < SECTOR_SIZE; ++i) {
+        if (payload[i] != padding)
+            return fail_write(error, NRIO_RAW_WRITE_SAFE_MODE_PLAN, locations[1] / SECTORS_PER_PAGE, 0);
+    }
+
+    // Same register-preserving ARM7 stub as patch_safe_mode.py.
+    static const u32 stub[] = {
+        0xe58f0050, 0xe58f1050, 0xe58f2050, 0xe58f3050, 0xe58fc050,
+        0xe10f3000, 0xe28f004c, 0xe59f102c, 0xe3a0200e, 0xe490c004,
+        0xe481c004, 0xe2522001, 0x1afffffb, 0xe128f003, 0xe59f0018,
+        0xe59f1018, 0xe59f2018, 0xe59f3018, 0xe59fc018, 0xe59ff000,
+        SAFE_MODE_STOCK_RAM, SAFE_MODE_STOCK_RAM, 0, 0, 0, 0, 0,
+    };
+    u8 patched_header[SECTOR_SIZE];
+    for (unsigned i = 0; i < SECTOR_SIZE; ++i) patched_header[i] = header[i];
+    store_safe_mode_word(patched_header + 0x34, SAFE_MODE_STAGE_RAM);
+    store_safe_mode_word(patched_header + 0x38, SAFE_MODE_STAGE_RAM);
+    store_safe_mode_word(patched_header + 0x3c, SECTOR_SIZE);
+    uint16_t crc = nrio_safe_mode_crc16(patched_header, 0x15e);
+    patched_header[0x15e] = (u8)crc;
+    patched_header[0x15f] = (u8)(crc >> 8);
+
+    for (unsigned i = 0; i < SECTOR_SIZE; ++i) {
+        safe_mode_plan.replacement[0][i] = patched_header[i];
+        safe_mode_plan.replacement[1][i] = payload[i];
+    }
+    for (unsigned i = 0; i < sizeof(stub) / sizeof(stub[0]); ++i)
+        store_safe_mode_word(safe_mode_plan.replacement[1] + i * sizeof(u32), stub[i]);
+    for (unsigned i = 0; i < SAFE_MODE_PAYLOAD_BYTES; ++i)
+        safe_mode_plan.replacement[1][sizeof(stub) + i] = payload[i];
+    for (u32 i = 0; i < pages * PAGE_RECORD_SIZE; ++i)
+        safe_mode_plan.expected[i] = records[i];
+
+    safe_mode_plan.sectors[0] = locations[0];
+    safe_mode_plan.sectors[1] = locations[1];
+    live_safe_mode_plan = true;
+    safe_mode_plan.pages = pages;
+    return true;
 }
 
 bool restore_safe_mode(u32 pages, u8 *records, struct nrio_raw_write_error *error)
@@ -273,7 +402,9 @@ bool restore_safe_mode(u32 pages, u8 *records, struct nrio_raw_write_error *erro
             return fail_write(error, NRIO_RAW_WRITE_SNAPSHOT, i, 1);
     }
 
-    if (!safe_mode_locations_match(records, pages * SECTORS_PER_PAGE))
+    u32 locations[2];
+    if (!safe_mode_locations(records, pages * SECTORS_PER_PAGE, locations) ||
+        locations[0] != safe_mode_plan.sectors[0] || locations[1] != safe_mode_plan.sectors[1])
         return fail_write(error, NRIO_RAW_WRITE_SAFE_MODE_PLAN, 0, 0);
     bool changed = false;
     for (u32 i = 0; i < 2; ++i) {

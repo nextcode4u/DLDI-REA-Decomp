@@ -28,6 +28,7 @@ bool nrio_recovery_startup(void)
 {
     // The ROM owns Slot-1 directly, including after a RAM-based launch.
     sysSetCardOwner(BUS_OWNER_ARM9);
+    discard_live_safe_mode();
     active_mode = NRIO_RAW_MAIN_READ;
     mode_locked = false;
     workspace = NULL;
@@ -41,6 +42,7 @@ void nrio_recovery_shutdown(void)
 {
     geometry.sectors = 0;
     workspace = NULL;
+    discard_live_safe_mode();
 }
 
 bool nrio_recovery_select_mode(enum nrio_raw_mode mode)
@@ -72,6 +74,13 @@ bool nrio_recovery_bind_workspace(void *buffer, uint32_t size)
 void nrio_recovery_get_write_error(struct nrio_raw_write_error *error)
 {
     *error = write_error;
+}
+
+bool nrio_recovery_prepare_safe_mode(uint32_t sectors[2])
+{
+    if (active_mode != NRIO_RAW_SAFE_MODE_INSTALL || !workspace || !sectors ||
+        nrio_recovery_safe_mode_ready() || write_error.stage != NRIO_RAW_WRITE_NONE) return false;
+    return prepare_live_safe_mode(geometry.pages_per_block, workspace, &write_error, sectors);
 }
 
 bool nrio_recovery_install_safe_mode(void)

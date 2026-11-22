@@ -59,6 +59,12 @@ bool nrio_recovery_get_info(struct nrio_raw_info *info);
 bool nrio_recovery_bind_workspace(void *buffer, uint32_t size);
 void nrio_recovery_get_write_error(struct nrio_raw_write_error *error);
 bool nrio_recovery_safe_mode_ready(void);
+bool nrio_recovery_prepare_safe_mode(uint32_t sectors[2]);
+uint16_t nrio_safe_mode_crc16(const uint8_t *data, unsigned size);
+uint32_t nrio_safe_mode_handoff(const uint8_t *payload);
+void discard_live_safe_mode(void);
+bool prepare_live_safe_mode(uint32_t pages, uint8_t *records, struct nrio_raw_write_error *error,
+                            uint32_t sectors[2]);
 bool nrio_recovery_install_safe_mode(void);
 bool nrio_recovery_repair_table(const struct nrio_raw_table_plan *plan);
 bool nrio_recovery_read(uint32_t sector, uint32_t count, void *buffer);
