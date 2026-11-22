@@ -132,6 +132,10 @@ Apache supplied the tested `safe.nds` for main NAND offset `0x20000`. It is `0x1
 
 This approach keeps the primary table pointing to safe mode so the stock uDisk path can remain in place. It does not require installing XuluMenu. The supplied USB logs for NAND ID `2514d3ec` report 1,024 main sectors written (512 KiB total) and one packed spare sector written, both sessions with zero write errors. The logs record transfer counts. Verifying which bytes changed and whether the original uDisk data was preserved requires before-and-after NAND dumps.
 
+Apache's later `dsfireline.bin` backup covers main NAND from `0x00000` through `0x7FFFF`. Its primary table maps the original `safe.bak` byte for byte starting at `0x20000`, and its secondary table points to uDisk at `0x80000`, immediately beyond the backup. Comparing Apache's patched image with the original, and independently preparing a ROM with the toolkit from that same backup, identified the same two affected NAND pages, `0x40` (ROM header) and `0x68` (ARM7 slot). Both are in erase block 0. Both relocation stubs copied the original ARM7 bytes and preserved the following eight bytes in emulation.
+
+The supplied `dsfireline_spare.bin` covers only the first eight spare records (`0x200` packed bytes). A full snapshot of block 0 for this 128-page geometry requires the first `0x2000` packed spare bytes in addition to the first `0x40000` main bytes. The toolkit successfully prepares a test ROM from the supplied files and reports the missing spare coverage. A targeted write still needs the full block snapshot and hardware verification.
+
 ### Prepare stock safe mode in the recovery toolkit
 
 1. Save **Main: read only** and **Spare: read only** dumps from the same cart.
