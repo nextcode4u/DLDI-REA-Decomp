@@ -98,6 +98,71 @@ def count_differences(primary, secondary):
                for offset in range(0, len(primary), SECTOR_SIZE))
 
 
+def inspect_safe_mode(main_dump, spare_dump, original_path, patched_path, pages_per_block):
+    """Verify the primary map against an extracted original and report erase coverage."""
+    main = read_main_dump(main_dump, PRIMARY_TABLE + REPORTED_MAX_TABLE_SIZE)
+    if main[PRIMARY_TABLE - 4:PRIMARY_TABLE] == b"QAFE":
+        raise ValueError("QAFE precedes the primary table. Stage 2 would skip it.")
+    entries = [address for (address,) in struct.iter_unpack("<I", main[PRIMARY_TABLE:])]
+    original = original_path.read_bytes()
+    if len(original) < 0x200:
+        raise ValueError("The original ROM is shorter than its header.")
+    size, = struct.unpack_from("<I", original, 0x80)
+    if not 0x200 <= size <= min(len(original), len(entries) * MAPPED_BLOCK_SIZE):
+        raise ValueError("Original ROM size is missing or exceeds the available table entries.")
+    patched = patched_path.read_bytes() if patched_path else None
+    if patched is not None and (len(patched) != len(original) or patched[size:] != original[size:]):
+        raise ValueError("The patched ROM must preserve the file length and bytes past its declared size.")
+
+    changed_pages = set()
+    rom_blocks = set()
+    seen = set()
+    block_bytes = pages_per_block * PAGE_SIZE
+    with main_dump.open("rb") as dump:
+        for offset in range(0, size, MAPPED_BLOCK_SIZE):
+            index = offset // MAPPED_BLOCK_SIZE
+            address = entries[index]
+            if address < MAPPED_BLOCK_SIZE or address % MAPPED_BLOCK_SIZE or address in seen:
+                raise ValueError(f"Invalid primary map entry {index} at 0x{address:X}.")
+            seen.add(address)
+            expected = original[offset:min(offset + MAPPED_BLOCK_SIZE, size)]
+            dump.seek(address)
+            actual = dump.read(len(expected))
+            if len(actual) != len(expected):
+                raise ValueError(f"Main backup ends before the mapped ROM range at 0x{address:X}.")
+            if actual != expected:
+                raise ValueError(f"Original ROM differs from NAND at mapped entry {index} (0x{address:X}).")
+
+            rom_blocks.add(address // block_bytes)
+            if patched is not None:
+                new = patched[offset:offset + len(expected)]
+                for page_offset in range(0, len(expected), PAGE_SIZE):
+                    span = slice(page_offset, page_offset + PAGE_SIZE)
+                    if new[span] != expected[span]:
+                        changed_pages.add((address + page_offset) // PAGE_SIZE)
+
+    lines = [f"Primary table at 0x{PRIMARY_TABLE:X} maps 0x{size:X} bytes matching the original ROM.",
+             f"Erase geometry: {pages_per_block} pages per block (0x{block_bytes:X} main bytes)."]
+    blocks = {page // pages_per_block for page in changed_pages} if patched is not None else rom_blocks
+    if patched is not None:
+        lines.append(f"Changed physical NAND pages: {len(changed_pages)}")
+    main_length = main_dump.stat().st_size
+    if not spare_dump.is_file():
+        raise ValueError(f"{spare_dump} must be a packed spare dump file")
+    spare_length = spare_dump.stat().st_size
+    for block in sorted(blocks):
+        start = block * block_bytes
+        end = start + block_bytes
+        spare_start = block * pages_per_block * SPARE_SIZE
+        spare_end = spare_start + pages_per_block * SPARE_SIZE
+        lines.append(f"  Erase block {block}: main 0x{start:X}–0x{end - 1:X}, "
+                     f"packed spare 0x{spare_start:X}–0x{spare_end - 1:X}")
+        if main_length < end or spare_length < spare_end:
+            lines.append("    Backup is missing part of this erase block.")
+    lines.append("Read-only comparison. No flash image was created.")
+    return "\n".join(lines)
+
+
 def inspect_boot(main_dump, spare_dump):
     main_data = read_main_dump(main_dump, SECONDARY_TABLE + REPORTED_MAX_TABLE_SIZE)
     spare_data = read_prefix(spare_dump, SPARE_SECTOR_SIZE)
@@ -173,9 +238,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("main_dump", type=Path, help="main-only dump from Main: read only")
     parser.add_argument("spare_dump", type=Path, help="spare-only dump from Spare: read only")
+    parser.add_argument("--safe-mode-rom", type=Path, help="original safe-mode ROM from the target cart")
+    parser.add_argument("--patched-rom", type=Path, help="compare a patched copy and list only changed erase blocks")
+    parser.add_argument("--pages-per-block", type=int, choices=(64, 128), help="erase-buffer page count from the DS log")
     args = parser.parse_args()
+    if args.safe_mode_rom and args.pages_per_block is None:
+        parser.error("--safe-mode-rom requires --pages-per-block from the DS log")
+    if args.safe_mode_rom is None and (args.patched_rom or args.pages_per_block):
+        parser.error("--patched-rom and --pages-per-block require --safe-mode-rom")
     try:
-        print(inspect_boot(args.main_dump, args.spare_dump))
+        if args.safe_mode_rom:
+            print(inspect_safe_mode(args.main_dump, args.spare_dump, args.safe_mode_rom,
+                                    args.patched_rom, args.pages_per_block))
+        else:
+            print(inspect_boot(args.main_dump, args.spare_dump))
     except (OSError, ValueError) as error:
         parser.error(str(error))
 

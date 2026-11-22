@@ -136,6 +136,14 @@ python3 patch_safe_mode.py safe-mode.nds safe-mode-arm7-test.nds --stage-address
 
 The patcher checks the header CRC and the original `0x38`-byte ARM7 range. It requires enough padding immediately after that payload, keeps the ROM length and its ARM7 ROM offset, and updates the ARM7 RAM address, entry, size, and header CRC in the new file. It checks for overlap with ARM9 in RAM. Determine the staging address from the actual boot-time memory layout, including buffers used by the first-stage loader. Test the new ROM with the primary table still pointing at safe mode, then check normal launch on DSi and USB safe mode on DS or DS Lite. The patcher works on files only. The original Fire Card safe-mode image and hardware test results are still needed to verify compatibility.
 
+Before choosing a write location, save **Main: read only** and **Spare: read only** dumps from the target. Run the following with the cart's extracted, unmodified safe-mode ROM and the erase-buffer page count from `SESSION.TXT`.
+
+```sh
+python3 inspect_boot.py target-main.bin target-spare.bin --safe-mode-rom safe-mode.nds --pages-per-block 128
+```
+
+Add `--patched-rom safe-mode-arm7-test.nds` to report only erase blocks containing changed pages. The check compares every mapped byte in the original ROM's declared size against the main dump and flags any missing main or spare erase-block coverage. On the DS Fire Card that reported 128 pages per block, writes at `0x20000` and `0x30000` both touch erase block 0. The next boundary, `0x40000`, can contain the secondary uDisk table. Use the mapping report to plan a targeted write and keep the general preflight enabled.
+
 ### Direct uDisk boot test on a working 16 Gbit N-Card
 
 Apache Thunder successfully redirected the primary block table at `0x8000` on a working 16 Gbit N-Card to boot its uDisk section directly, as in the [second-card recovery](#second-card-recovery-and-custom-banner). Apache deliberately put the card into the bricked state, wrote the corrected NAND dump, restored the card's shared-block backup, then reflashed the uDisk section with the XuluMenu installer.
