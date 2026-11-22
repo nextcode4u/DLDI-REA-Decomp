@@ -48,3 +48,59 @@ uint32_t udisk_byte_sum(const uint8_t *data, size_t length)
         sum += data[offset];
     return sum;
 }
+
+/* ARM9 0x02000614 and the program/read/compare loops in 0x020006DC. */
+static bool write_and_check(const struct udisk_update_io *io, uint32_t address,
+                            const uint8_t *data, uint32_t erase_block_bytes)
+{
+    uint32_t expected = udisk_byte_sum(data, UDISK_ALLOCATION_BYTES);
+    bool erase_first = address % erase_block_bytes == 0;
+    for (unsigned attempt = 0; attempt < 7; ++attempt) {
+        io->program(io->context, address, data, erase_first);
+        if (io->read_byte_sum(io->context, address) == expected)
+            return true;
+    }
+    return false;
+}
+
+/* ARM9 0x020006DC. The caller supplies an already unpacked payload padded
+   to whole allocations. The callbacks represent the hardware operations. */
+enum udisk_update_result udisk_install_payload(const uint8_t *payload, size_t payload_size,
+                                               uint32_t erase_block_bytes,
+                                               uint8_t map_buffer[UDISK_ALLOCATION_BYTES],
+                                               const struct udisk_update_io *io)
+{
+    if (!payload || !map_buffer || !io || !io->program || !io->read_byte_sum ||
+        !payload_size || payload_size % UDISK_ALLOCATION_BYTES ||
+        payload_size / UDISK_ALLOCATION_BYTES > UDISK_ALLOCATION_COUNT ||
+        (erase_block_bytes != 0x20000 && erase_block_bytes != 0x40000))
+        return UDISK_UPDATE_INVALID_INPUT;
+
+    uint32_t allocations[UDISK_ALLOCATION_COUNT];
+    for (size_t i = 0; i < UDISK_ALLOCATION_COUNT; ++i)
+        allocations[i] = UINT32_MAX;
+
+    size_t offset = 0;
+    uint32_t address = UDISK_PAYLOAD_NAND_OFFSET;
+    while (offset < payload_size) {
+        if (!udisk_update_address_allowed(address, erase_block_bytes))
+            return UDISK_UPDATE_PAYLOAD_RANGE_EXHAUSTED;
+        if (write_and_check(io, address, payload + offset, erase_block_bytes)) {
+            allocations[offset / UDISK_ALLOCATION_BYTES] = address;
+            offset += UDISK_ALLOCATION_BYTES;
+        }
+        address += UDISK_ALLOCATION_BYTES;
+    }
+
+    udisk_expand_block_map(allocations, map_buffer);
+    for (size_t i = UDISK_MAP_BYTES; i < UDISK_ALLOCATION_BYTES; ++i)
+        map_buffer[i] = 0xff;
+
+    /* The stock secondary-table chunk ends with two little-endian words. */
+    const uint8_t map_footer[] = {3, 0, 0, 0, 'g', 'a', 'o', 0};
+    for (size_t i = 0; i < sizeof(map_footer); ++i)
+        map_buffer[UDISK_ALLOCATION_BYTES - sizeof(map_footer) + i] = map_footer[i];
+
+    return write_and_check(io, UDISK_SECONDARY_MAP_NAND_OFFSET, map_buffer, erase_block_bytes)
+        ? UDISK_UPDATE_OK : UDISK_UPDATE_MAP_VERIFY_FAILED;
+}
