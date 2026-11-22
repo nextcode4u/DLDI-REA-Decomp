@@ -5,10 +5,10 @@ This integration adds recovery options to Apache Thunder's nrioTool utility menu
 ## DSi utility menu
 
 - **Y — Install DSi safe mode.** The tool can prepare a patch from the cart's own stock safe-mode ROM. If `sd:/nrioFiles/safe-mode.nds` exists, it must match the cart's mapped ROM outside the header and ARM7 sectors and contain a recognized patch with the cart's original ARM7 payload. The tool accepts the toolkit patch and Apache's tested stub.
-- **R — Install SD banner.** Put the v1 banner in `sd:/nrioFiles/banner.bin`. Supply either the first `0x800` bytes or a complete `0x840`-byte banner with a zero-filled final `0x40` bytes. The tool verifies the CRC and replaces the banner page at physical NAND offset `0x2000`. The second copy at `0x2800` is preserved.
+- **R — Install SD banner.** Put the v1 banner in `sd:/nrioFiles/banner.bin`. Supply either the first `0x800` bytes or a complete `0x840`-byte banner with a zero-filled final `0x40` bytes. The tool verifies the CRC and replaces the banner page at physical NAND offset `0x2000`. The second copy at `0x2800` is preserved. The writer also preserves blank spare records and recognized copies of the ARM7 boot record. It regenerates ECC only if the existing triplets match the original main page.
 - **SELECT — Back up block 0.** Writes `main.bin` and packed `spare.bin` to the next available `sd:/nrioFiles/block0-NNN` directory.
 
-Both install options save a block-0 backup to SD before asking for confirmation. Hold **L + R** and press **A** to write. The backend compares every live main and spare byte against its snapshot before erase, regenerates ECC for the changed sectors, and verifies the full block after programming. Keep the SD backup for recovery if power or a NAND operation fails. The SD workflow still needs a physical DSi test.
+Both install options save a block-0 backup to SD before asking for confirmation. Hold **L + R** and press **A** to write. The backend compares every live main and spare byte against its snapshot before erase, updates ECC where the selected operation calls for it, and verifies the full block after programming. Keep the SD backup for recovery if power or a NAND operation fails. Apache verified SD backup export and reported that the first banner build changed the displayed banner. The cart white-screened afterward and had no pre-write boot test. The backup showed that page 4's spare record duplicated the ARM7 boot code from pages 1 and 5. The revised banner path preserves that record in emulation and still needs a physical test.
 
 ## Build
 
