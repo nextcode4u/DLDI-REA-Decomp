@@ -6,7 +6,7 @@ index c3250e7..79fab94 100644
 -SOURCES  := source source/common
 +SOURCES  := source source/common source/recovery_nand
 diff --git a/arm9/source/main.cpp b/arm9/source/main.cpp
-index 3d1a9e7..eb6ed4e 100644
+index 3d1a9e7..ba6b653 100644
 --- a/arm9/source/main.cpp
 +++ b/arm9/source/main.cpp
 @@ -1041,0 +1042,8 @@ void DoUdiskDump() {
@@ -18,23 +18,29 @@ index 3d1a9e7..eb6ed4e 100644
 +	CardInit();
 +}
 +
-@@ -1052 +1060,6 @@ int UtilityMenu() {
--	printf("\n"); // printf("Press [Y] write banner to cart\n");
+@@ -1046,0 +1055 @@ int UtilityMenu() {
++	else printf("\n");
+@@ -1049,0 +1059,8 @@ int UtilityMenu() {
 +	if (wasDSi && sdMounted) {
-+		printf("[Y] Install DSi safe mode\n");
-+		printf("[R] Install SD banner\n");
-+		printf("[SELECT] Back up block 0\n");
-+		printf("[UP] Restore banner ARM7\n");
++		printf("Press [Y] to fix DSi safe mode\n\n"
++		       "Press [R] to install SD banner\n\n"
++		       "Press [SELECT] to save block 0\n\n"
++		       "Press [UP] to restore ARM7\n");
++	} else {
++		printf("\n\n\n\n\n\n\n");
 +	}
-@@ -1054 +1067 @@ int UtilityMenu() {
+@@ -1051,4 +1068 @@ int UtilityMenu() {
+-	printf("\n");
+-	printf("\n"); // printf("Press [Y] write banner to cart\n");
+-	printf("\n");
 -	printf("\n\n\n\n\n\n\n\nPress [B] to go to main menu...\n");
-+	printf("\n\nPress [B] to go to main menu...\n");
-@@ -1061,0 +1075,4 @@ int UtilityMenu() {
++	printf("\n\n\n\nPress [B] to go to main menu...\n");
+@@ -1061,0 +1076,4 @@ int UtilityMenu() {
 +			case KEY_Y:		{ if (wasDSi && sdMounted)value = 2; } break;
 +			case KEY_R:		{ if (wasDSi && sdMounted)value = 3; } break;
 +			case KEY_SELECT:	{ if (wasDSi && sdMounted)value = 5; } break;
 +			case KEY_UP:	{ if (wasDSi && sdMounted)value = 6; } break;
-@@ -1299 +1316,4 @@ int main() {
+@@ -1299 +1317,4 @@ int main() {
 -					// case 3: { DoBannerWrite(); } break;
 +					case 2: { DoSDRecovery(0); } break;
 +					case 3: { DoSDRecovery(1); } break;
