@@ -35,6 +35,8 @@ The Fire Line and DS Linker samples have the same first sector of the secondary 
 
 The archive has a Fire Line early main-area dump and an ExpressCard logical ROM containing an intact ARM7 copy. The samples examined do not supply a complete raw block-0 spare capture. The archived ExpressCard disk image begins with the `DSGBAFLS` filesystem signature. It supplies filesystem data rather than physical boot pages. A reference restore still needs a matching raw capture and an on-device test on another cart of the same verified revision. [Fire Line archive](https://github.com/m4x10187/fire-card-archive/tree/main/DS%20Fire%20Link/Dumps/8GBit) · [ExpressCard archive](https://github.com/m4x10187/fire-card-archive/tree/main/ExpressCard/Dumps)
 
+A local reference candidate was prepared from the 8 Gbit DS Linker that Apache confirmed booted after the targeted safe-mode install. Its complete block-0 main and spare data restored an erased block and passed exact readback in emulation. The captured main image ends at `0x80000`, so the candidate lacks the 512-byte compatibility sample at that address. A fresh nrioTool **SELECT** backup on the working reference cart records that sample in `backup.info`. Cross-cart compatibility remains untested.
+
 ### Save a DS session log
 
 The screen reports cart detection, NAND geometry, repair checks, the first USB read and write, progress at each additional 8 MiB, and failures with their LBA or NAND page. A USB NAND session ends with read, write, and error counts. Table repair reports which checks passed or where it stopped.
