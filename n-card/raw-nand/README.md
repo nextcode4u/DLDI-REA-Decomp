@@ -122,7 +122,7 @@ Apache recalls buying an N-Card around 2008 for roughly $40–$50 or more.
 
 In the newer layout, the safe-mode ROM can update uDisk from a PC through the Slot-2 USB writer before handing off to normal uDisk. With the writer absent, Apache Thunder reports that the safe-mode ROM follows the second block table to load uDisk. The offsets in the table describe the reported layouts and may vary by card.
 
-To enter USB update mode on a DS or DS Lite, insert the USB writer into Slot-2 and connect it to the PC. Hold **L + R + A + B + D-pad Up** while launching the N-Card. Keep holding the buttons until **USB SAFE BLOCK** appears on the bottom screen. The PC updater can then run even if normal uDisk fails to boot. [Apache Thunder’s XuluMenu flashing instructions](https://github.com/ApacheThunder/XuluMenu#flashing-instructions)
+To enter USB update mode on a DS or DS Lite, insert the USB writer into Slot-2 and connect it to the PC. Apache Thunder reports that holding **L + R + A + B** while launching the cart opens the safe-mode USB screen if its safe-mode ROM is still in the boot path. He also confirmed that an extracted `safe.nds` can be launched from XMENU with the same buttons on a cart whose primary table goes directly to uDisk. This route requires a way to launch XMENU. For the XuluMenu flashing procedure, its release instructions specify adding **D-pad Up** and holding the buttons until **USB SAFE BLOCK** appears. [XuluMenu flashing instructions](https://github.com/ApacheThunder/XuluMenu#flashing-instructions)
 
 ### DS Fire Card safe-mode ARM7 experiment
 
