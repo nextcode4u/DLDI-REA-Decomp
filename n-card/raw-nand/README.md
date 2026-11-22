@@ -21,6 +21,7 @@ On a DS or DS Lite with the Slot-2 USB writer, choose a mode with **Up/Down**, t
 | Repair primary boot table | On-console repair using the target cart's surviving uDisk mapping |
 | Install stock safe mode | On-console install using a prepared ROM with the target's complete block-0 snapshot |
 | Check recovery only | Run the same preflight with read-only NAND access and export the result |
+| Check safe mode | Detect the stock ARM7 layout or a recognized DSi relocation patch using read-only NAND access |
 
 The older single-mode binaries used in the hardware reports are available in the [archived revision](https://github.com/nextcode4u/DLDI-REA-Decomp/tree/0b09821d66c6e91f2a94383f055720258bcfd1fb/n-card/raw-nand/compiled).
 
@@ -142,6 +143,12 @@ The supplied `dsfireline_spare.bin` covers only the first eight spare records (`
 Apache supplied the unmodified and modified DS Linker safe-mode ROMs. The target's main backup maps the unmodified ROM byte for byte from `0x20000`. Apache's patch and the toolkit's patch both change physical NAND pages `0x40` and `0x66` and preserve the eight bytes after the relocated ARM7 payload in emulation. The original DS Linker and Fire Line ARM7 payloads differ by one 32-bit word. The DS Linker waits for `0x1118027E` at `0x027FFE60`. The Fire Line waits for `0x1918027E` at the same address. Emulation confirmed that the DS Linker branches with its own word and keeps waiting with the Fire Line word. Prepare the patch from the target cart's own safe-mode ROM.
 
 The complete DS Linker capture contains `0x2000` packed spare bytes. The last non-`FF` byte was at `0x17F`. Apache used that capture and the original main dump to test the targeted installer on the unmodified DS Linker. The exported session log reported NAND ID `2514d3ec` and **Safe-mode install verified**, confirming the backup check, block-0 rewrite, and full readback on hardware. Apache completed the install on the DS Lite without PC interaction during the write, then confirmed that the DS Linker booted normally on both DS Lite and DSi with the toolkit-generated patch and its existing uDisk installation. He reported that earlier recoveries needed a uDisk reinstall after he ran his custom updater to enter a bricked state. The USB updater shortcut remains to be retested.
+
+### Identify the safe-mode patch on a cart
+
+Launch `nrio-raw-toolkit.nds` on a DS or DS Lite, insert the target at the detection screen, and choose **Check safe mode**. The app follows the primary boot table at `0x8000`, validates the mapped ROM header and ARM7 payload, and reports a supported stock ROM, the toolkit's DSi ARM7 patch, Apache Thunder's DSi ARM7 patch, or an unknown layout. Read failures are reported separately. The ROM and ARM7 NAND offsets and recognized handoff word appear in the exportable session log.
+
+This check is read-only. It recognizes the Fire Line and DS Linker payloads and the two relocation stubs from the tested layout. Other images can report an unknown layout. Patch recognition confirms which ARM7 code is present. Test normal boot on a DSi to confirm compatibility on that cart.
 
 ### Prepare stock safe mode in the recovery toolkit
 

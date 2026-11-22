@@ -228,3 +228,104 @@ void install_safe_mode(void)
     }
     session_log("Safe-mode install verified.\nRestart on the DSi to test boot.");
 }
+
+
+static uint16_t safe_mode_crc16(const uint8_t *data, unsigned size)
+{
+    uint16_t crc = 0xffff;
+    for (unsigned i = 0; i < size; ++i) {
+        crc ^= data[i];
+        for (unsigned bit = 0; bit < 8; ++bit)
+            crc = (crc >> 1) ^ (crc & 1 ? 0xa001 : 0);
+    }
+    return crc;
+}
+
+static uint32_t safe_mode_handoff(const uint8_t *payload)
+{
+    uint32_t word = read_le32(payload + 0x34);
+    // The Fire Line and DS Linker bodies differ only in this handoff word.
+    if (safe_mode_crc16(payload, 0x34) != 0x4b78) return 0;
+    return word == 0x1918027e || word == 0x1118027e ? word : 0;
+}
+
+enum safe_mode_status read_safe_mode_status(struct safe_mode_info *info)
+{
+    enum { STOCK_ADDRESS = 0x03800000, STAGING_ADDRESS = 0x02380000,
+           TABLE_SECTOR = NRIO_RAW_PRIMARY_TABLE / SECTOR_BYTES };
+    struct nrio_raw_info nand;
+    *info = (struct safe_mode_info){0};
+    if (!select_view(NRIO_RAW_MAIN_READ, &nand) ||
+        !nrio_recovery_read(TABLE_SECTOR - 1, 1, sector)) return SAFE_MODE_UNREADABLE;
+    if (!memcmp(sector + SECTOR_BYTES - 4, "QAFE", 4)) return SAFE_MODE_UNKNOWN;
+    if (!nrio_recovery_read(TABLE_SECTOR, 1, sector)) return SAFE_MODE_UNREADABLE;
+
+    uint32_t first = read_le32(sector);
+    if (first < ROM_BLOCK_BYTES || first % ROM_BLOCK_BYTES || first / SECTOR_BYTES >= nand.sectors)
+        return SAFE_MODE_UNKNOWN;
+    info->rom_address = first;
+    if (!nrio_recovery_read(first / SECTOR_BYTES, 1, sector)) return SAFE_MODE_UNREADABLE;
+    if (read_le32(sector) != 0xea00002e || read_le32(sector + 0x0c) != 0x23232323 ||
+        sector[0x12] != 0 || read_le32(sector + 0x84) != SECTOR_BYTES ||
+        safe_mode_crc16(sector, 0x15e) != (sector[0x15e] | sector[0x15f] << 8))
+        return SAFE_MODE_UNKNOWN;
+
+    uint32_t source = read_le32(sector + 0x30), entry = read_le32(sector + 0x34);
+    uint32_t destination = read_le32(sector + 0x38), size = read_le32(sector + 0x3c);
+    uint32_t used_size = read_le32(sector + 0x80);
+    uint32_t map_offset = source / ROM_BLOCK_BYTES * sizeof(uint32_t);
+    if (source < SECTOR_BYTES || source % SECTOR_BYTES || source >= used_size ||
+        size > used_size - source || map_offset >= 0x10000 || entry != destination)
+        return SAFE_MODE_UNKNOWN;
+    bool stock = destination == STOCK_ADDRESS && size == 0x38;
+    if (!stock && (destination != STAGING_ADDRESS || size != SECTOR_BYTES))
+        return SAFE_MODE_UNKNOWN;
+
+    if (!nrio_recovery_read(TABLE_SECTOR + map_offset / SECTOR_BYTES, 1, sector))
+        return SAFE_MODE_UNREADABLE;
+    uint32_t mapped = read_le32(sector + map_offset % SECTOR_BYTES);
+    if (mapped < ROM_BLOCK_BYTES || mapped % ROM_BLOCK_BYTES)
+        return SAFE_MODE_UNKNOWN;
+    uint32_t arm7_sector = mapped / SECTOR_BYTES + source % ROM_BLOCK_BYTES / SECTOR_BYTES;
+    if (arm7_sector >= nand.sectors) return SAFE_MODE_UNKNOWN;
+    info->arm7_address = arm7_sector * SECTOR_BYTES;
+    if (!nrio_recovery_read(arm7_sector, 1, sector)) return SAFE_MODE_UNREADABLE;
+
+    if (stock) {
+        info->handoff = safe_mode_handoff(sector);
+        return info->handoff ? SAFE_MODE_STOCK : SAFE_MODE_UNKNOWN;
+    }
+    // Compare the entire stub prefix, including addresses, before checking its payload.
+    if (safe_mode_crc16(sector, 0x6c) == 0x1a2d) {
+        info->handoff = safe_mode_handoff(sector + 0x6c);
+        return info->handoff ? SAFE_MODE_TOOLKIT : SAFE_MODE_UNKNOWN;
+    }
+    if (safe_mode_crc16(sector, 0x3c) == 0x2382 &&
+        read_le32(sector + 0x74) == 0x38 && read_le32(sector + 0x78) == STOCK_ADDRESS) {
+        info->handoff = safe_mode_handoff(sector + 0x3c);
+        return info->handoff ? SAFE_MODE_APACHE : SAFE_MODE_UNKNOWN;
+    }
+    return SAFE_MODE_UNKNOWN;
+}
+
+void check_safe_mode(void)
+{
+    static const char *const descriptions[] = {
+        [SAFE_MODE_UNKNOWN] = "Unknown safe-mode layout.",
+        [SAFE_MODE_UNREADABLE] = "Could not read the safe-mode map or ROM.",
+        [SAFE_MODE_STOCK] = "Supported stock safe-mode ROM.",
+        [SAFE_MODE_TOOLKIT] = "Toolkit DSi ARM7 patch found.",
+        [SAFE_MODE_APACHE] = "Apache's DSi ARM7 patch found.",
+    };
+    struct safe_mode_info info;
+    session_log("Reading the primary boot table.");
+    enum safe_mode_status status = read_safe_mode_status(&info);
+    session_log("%s", descriptions[status]);
+    if (info.rom_address)
+        session_log("ROM: NAND 0x%08lx.", (unsigned long)info.rom_address);
+    if (info.arm7_address)
+        session_log("ARM7: NAND 0x%08lx.", (unsigned long)info.arm7_address);
+    if (info.handoff)
+        session_log("ARM7 handoff: 0x%08lx.", (unsigned long)info.handoff);
+    session_log("Read only. No NAND writes.");
+}
