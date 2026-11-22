@@ -8,7 +8,7 @@ Use one [N-Card Recovery Toolkit `.nds`](compiled/write-enabled/nrio-raw-toolkit
 
 At the first screen, make sure the target N-Card is in Slot-1 and press **A** to detect it. If detection fails, press **A** to retry or **B** to finish and export the log. The toolkit opens the mode menu after detecting the NAND.
 
-On a DS or DS Lite with the Slot-2 USB writer, choose a mode with **Up/Down**, then press **A**. To enable a write mode, hold **L + R** and press **A** again. Connect USB after selecting. Eject the disk on the PC and disconnect the USB cable before pressing **START**. The toolkit then offers to export the session log. Relaunch the same `.nds` to choose a different mode.
+On a DS or DS Lite with the Slot-2 USB writer, choose a mode with **Up/Down**, then press **A**. To enable a write mode, hold **L + R** and press **A** again. Connect USB after selecting. Eject the disk on the PC and disconnect the USB cable before pressing **START**. The results screen offers **A: export log**, **B: modes**, and **START: exit**. Returning to modes reprobes Slot-1 and resets NAND mode, write status, and USB transfer counters. You can switch views and run on-console checks in one launch.
 
 | Mode | Operation |
 | --- | --- |
@@ -29,13 +29,13 @@ The older single-mode binaries used in the hardware reports are available in the
 
 The screen reports cart detection, NAND geometry, repair checks, the first USB read and write, progress at each additional 8 MiB, and failures with their LBA or NAND page. A USB NAND session ends with read, write, and error counts. Table repair reports which checks passed or where it stopped.
 
-When **A: export log** appears after a repair, cancellation, or USB NAND session, press **A** and connect the Slot-2 USB writer to the PC. Copy `SESSION.TXT` from the **NRIO LOGS** drive. This read-only drive is generated in DS memory and uses a separate USB identity. Copy the log before exiting or turning off the DS. USB export of the DS log still needs a physical-cart test.
+When **A: export log** appears after a check, repair, or USB NAND session, press **A** and connect the Slot-2 USB writer to the PC. Copy `SESSION.TXT` from the **NRIO LOGS** drive. This read-only drive is generated in DS memory and uses a separate USB identity. Eject it and unplug USB before pressing **START** to return to the results screen. The log accumulates across modes during the launch. USB re-enumeration between modes still needs a hardware test.
 
 ### Repair using only the target cart
 
 1. Save main and spare backups from the target with the read-only modes. Launch the toolkit independently of the target cart if it cannot boot.
 2. With the USB cable disconnected, choose **Check recovery only**. The DS checks the early boot data, shared spare records, secondary table at `0x40000`, and the uDisk image it maps. It reports how many table sectors differ or where the checks stopped. Export `SESSION.TXT` if you want to keep the result.
-3. To repair an eligible cart, relaunch the toolkit and choose **Repair primary boot table**. If the checks pass, hold **L + R** and press **A**. The driver rechecks the source table and the target's shared spare snapshot, replaces only the 16 KiB primary table at `0x8000` and its ECC, and verifies the entire rewritten erase block. Restart to test uDisk boot.
+3. To repair an eligible cart, press **B** to return to modes and choose **Repair primary boot table**. If the checks pass, hold **L + R** and press **A**. The driver rechecks the source table and the target's shared spare snapshot, replaces only the 16 KiB primary table at `0x8000` and its ECC, and verifies the entire rewritten erase block. Restart to test uDisk boot.
 
 This path uses the target's own NAND data and bypasses the safe-mode ROM. It applies to the observed 16 Gbit spare layout, with page 0's spare record blank, the three ARM7 records intact, and the repeated boot data present. It can use a supported uDisk or XuluMenu image that survives on the cart. It cannot restore an erased shared block or reinstall missing uDisk. The operation erases and rewrites the first physical erase block, with other main and spare bytes staged in RAM and preserved. Use a reliable power supply. The same-cart write has passed emulation and still needs a physical-cart test.
 
@@ -201,7 +201,7 @@ Apache reported slightly faster boot after the change and saw no SRAM errors whe
 
 For an unbootable N-Card, start the console with the target cart removed and launch `nrio-raw-toolkit.nds` through a separate homebrew launcher. Insert the target after power-on, then press **A** at the toolkit's detection screen. This keeps cartridge detection and boot-table repair independent of the target cart's ability to boot. [Apache Thunder’s DS Lite test setup](#launching-the-tools-with-an-unbootable-card)
 
-1. **Back up both NAND views.** With the N-Card in Slot-1 and the USB writer in Slot-2, launch the toolkit in **Main: read only** and save a full disk image on the PC. Relaunch in **Spare: read only** and save a separate image. Cancel any prompt to initialize or format either disk. Record the card model and reported sector counts.
+1. **Back up both NAND views.** With the N-Card in Slot-1 and the USB writer in Slot-2, launch the toolkit in **Main: read only** and save a full disk image on the PC. Return to modes and choose **Spare: read only** to save a separate image. Cancel any prompt to initialize or format either disk. Record the card model and reported sector counts.
 2. **Check how far the cart boots.** Record whether the DS menu shows the banner, whether launching the cart reaches uDisk or a white screen, and whether the [USB Safe Block shortcut](#boot-layout-notes) reaches the updater on carts with that layout. A working banner can return before uDisk boots, as it did in the [ExpressCard recovery](#full-boot-restored-on-the-expresscard).
 3. **Match the repair to the finding.** Use a card-specific uDisk updater and confirm its target block table before flashing. The ExpressCard result applies to the `0x8000` variant used on that card. For a confirmed spare-area repair with replacement data appropriate for the target, select **Spare: recovery write**. Its USB sector 0 covers eight spare records, so preserve any records outside the intended change in the 512-byte payload. For a banner-only change, follow the [banner instructions](compiled/write-enabled/banner-only/) for the page at main offset `0x2000`.
 4. **Verify the result.** Read back the affected main and spare data with the read-only modes and compare them with the expected bytes. Check the banner in the DS menu and launch the cart to verify that uDisk boots. Record which checks pass and any USB or DS error text.

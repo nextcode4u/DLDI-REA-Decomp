@@ -9,7 +9,7 @@ index 241e210..0aa86ee 100644
 -SOURCES_S	:= $(shell find -L $(SOURCEDIRS) -name "*.s")
 +SOURCES_S	:= $(filter-out source/dldi32k.s,$(shell find -L $(SOURCEDIRS) -name "*.s"))
 diff --git a/source/main.c b/source/main.c
-index 7138d36..e3221b0 100644
+index 7138d36..8988be6 100644
 --- a/source/main.c
 +++ b/source/main.c
 @@ -31 +30,0 @@
@@ -18,7 +18,18 @@ index 7138d36..e3221b0 100644
 +#include "boot-repair.h"
 +#include "recovery_nand/recovery.h"
 +#include "session-log.h"
-@@ -53,0 +56,58 @@ static void exit_to_loader(void) {
+@@ -53,0 +56,63 @@ static void exit_to_loader(void) {
++static bool probe_cart(void) {
++  session_log("Probing Slot-1 NAND.");
++  if (nrio_recovery_startup()) {
++    session_log("N-Card detected.");
++    return true;
++  }
++  nrio_recovery_shutdown();
++  session_log("N-Card did not respond.");
++  return false;
++}
++
 +static bool wait_for_cart(void) {
 +  consoleClear();
 +  printf("N-Card Recovery Toolkit\n\n"
@@ -34,14 +45,8 @@ index 7138d36..e3221b0 100644
 +    }
 +    if (!(down & KEY_A))
 +      continue;
-+    session_log("Probing Slot-1 NAND.");
-+    if (nrio_recovery_startup()) {
-+      session_log("N-Card detected.");
-+      return true;
-+    }
-+    nrio_recovery_shutdown();
 +    consoleClear();
-+    session_log("N-Card did not respond.");
++    if (probe_cart()) return true;
 +    printf("\nCheck the cart in Slot-1.\nA: retry   B: back\n");
 +  }
 +}
@@ -77,7 +82,7 @@ index 7138d36..e3221b0 100644
 +      return true;
 +  }
 +}
-@@ -55 +115,40 @@ static void exit_to_loader(void) {
+@@ -55 +120,40 @@ static void exit_to_loader(void) {
 -ITCM_CODE int tud_idle() {
 +static int choose_mode(void) {
 +  unsigned mode = NRIO_RAW_MAIN_READ;
@@ -119,69 +124,91 @@ index 7138d36..e3221b0 100644
 +
 +
 +ITCM_CODE static void tud_idle(void) {
-@@ -75 +174,2 @@ ITCM_CODE int tud_idle() {
+@@ -75 +179,2 @@ ITCM_CODE int tud_idle() {
 -	tud_deinit(0);
 +	tud_deinit(BOARD_TUD_RHPORT);
 +	fifoSendValue32(FIFO_PM, PM_REQ_SLEEP_ENABLE);
-@@ -77 +176,0 @@ ITCM_CODE int tud_idle() {
+@@ -77 +181,0 @@ ITCM_CODE int tud_idle() {
 -	return 0;
-@@ -80,5 +179 @@ ITCM_CODE int tud_idle() {
+@@ -80,5 +184 @@ ITCM_CODE int tud_idle() {
 -int main(void) {
 -  defaultExceptionHandler();
 -  powerOff(POWER_3D_CORE | POWER_MATRIX);
 -
 -  ui_init();
 +static bool usb_unavailable;
-@@ -85,0 +181,2 @@ int main(void) {
+@@ -85,0 +186,2 @@ int main(void) {
 +static bool start_usb(void) {
 +  if (usb_unavailable) return false;
-@@ -90,5 +187,4 @@ int main(void) {
+@@ -90 +192,9 @@ int main(void) {
 -  bool usb_init_status = !isDSiMode() && tusb_init(BOARD_TUD_RHPORT, &dev_init);
--
++  if (!tusb_init(BOARD_TUD_RHPORT, &dev_init)) {
++    session_log("Could not initialize USB.");
++    tud_deinit(BOARD_TUD_RHPORT);
++    usb_unavailable = true;
++    return false;
++  }
++  ui_show_chip_id();
++  return true;
++}
+@@ -92,3 +202,33 @@ int main(void) {
 -  if (isDSiMode()) {
 -    printf(UI_COLOR_ERROR "This program is not compatible with DSi/3DS consoles.\n");
 -    exit_to_loader();
-+  if (!tusb_init(BOARD_TUD_RHPORT, &dev_init)) {
-+    session_log("Could not initialize USB.");
-+    usb_unavailable = true;
-+    return false;
-@@ -96 +191,0 @@ int main(void) {
--
-@@ -97,0 +193,2 @@ int main(void) {
-+  return true;
++static void export_log(void) {
++  session_log("Session log prepared for USB.");
++  msc_prepare_log();
++  if (!start_usb()) return;
++  consoleClear();
++  printf("Read-only NRIO LOGS drive\n\n"
++         "Connect USB and copy SESSION.TXT\n"
++         "to your computer.\n\n"
++         "Eject and unplug before START.\n");
++  tud_idle();
++  consoleClear();
++  session_log("USB log export ended.");
 +}
-@@ -99,2 +196,3 @@ int main(void) {
--  if (!usb_init_status) {
--    printf(UI_COLOR_ERROR "Could not initialize USB!\n");
-+static void offer_log(void) {
-+  if (usb_unavailable) {
-+    printf("USB log export unavailable.\n");
-@@ -102,0 +201,22 @@ int main(void) {
-+  printf("\nA: export log   B: exit\n");
-+  while (1) {
-+    swiWaitForVBlank();
-+    scanKeys();
-+    uint32_t down = keysDown();
-+    if (down & KEY_B) return;
-+    if (!(down & KEY_A)) continue;
-+    session_log("Session log prepared for USB.");
-+    msc_prepare_log();
-+    if (start_usb()) {
-+      consoleClear();
-+      printf("Read-only NRIO LOGS drive\n\n"
-+             "Connect USB and copy SESSION.TXT\n"
-+             "to your computer.\n\n"
-+             "Eject before pressing START.\n");
-+      tud_idle();
-+    } else {
-+      exit_to_loader();
-+    }
-+    return;
++
++static bool session_menu(bool cart_detected) {
++  for (;;) {
++    if (usb_unavailable)
++      printf("\nUSB log export unavailable.\n");
++    else
++      printf("\nA: export log\n");
++    if (cart_detected) printf("B: modes   START: exit\n");
++    else printf("B or START: exit\n");
++
++    uint32_t down;
++    do {
++      swiWaitForVBlank();
++      scanKeys();
++      down = keysDown();
++    } while (!(down & (KEY_B | KEY_START)) && (usb_unavailable || !(down & KEY_A)));
++
++    if (down & KEY_START) return false;
++    if (down & KEY_B) return cart_detected;
++    export_log();
+@@ -95,0 +236 @@ int main(void) {
++}
+@@ -97 +238,24 @@ int main(void) {
+-  ui_show_chip_id();
++static void run_mode(int mode) {
++  if (mode == NRIO_RAW_TABLE_REPAIR || mode == CHECK_RECOVERY) {
++    boot_repair(mode == CHECK_RECOVERY);
++  } else if (mode == NRIO_RAW_SAFE_MODE_INSTALL) {
++    install_safe_mode();
++  } else if (mode == CHECK_SAFE_MODE) {
++    check_safe_mode();
++  } else if (!msc_nand_initialize(mode)) {
++    session_log("Could not initialize NAND mode.");
++  } else if (start_usb()) {
++    session_log("Ready. Eject, unplug, then START.");
++    tud_idle();
++    session_log("USB NAND session ended.");
++    msc_log_summary();
 +  }
 +}
-@@ -104,2 +224,10 @@ int main(void) {
--  if (!msc_dldi_initialize()) {
--    printf(UI_COLOR_ERROR "Could not initialize DLDI!\n");
++
 +int main(void) {
 +  defaultExceptionHandler();
 +  powerOff(POWER_3D_CORE | POWER_MATRIX);
@@ -189,43 +216,39 @@ index 7138d36..e3221b0 100644
 +  ui_init();
 +  session_log("N-Card Recovery Toolkit session.");
 +  session_log("USB app %s (%s).", VERSION, GIT_HASH);
-+
+@@ -99,2 +263,2 @@ int main(void) {
+-  if (!usb_init_status) {
+-    printf(UI_COLOR_ERROR "Could not initialize USB!\n");
 +  if (isDSiMode()) {
 +    session_log("This app requires a DS or DS Lite.");
-@@ -109,3 +237,22 @@ int main(void) {
+@@ -104,3 +268,3 @@ int main(void) {
+-  if (!msc_dldi_initialize()) {
+-    printf(UI_COLOR_ERROR "Could not initialize DLDI!\n");
+-    exit_to_loader();
++  if (!wait_for_cart()) {
++    session_menu(false);
++    return 0;
+@@ -107,0 +272,5 @@ int main(void) {
++  for (;;) {
++    int mode = choose_mode();
++    if (mode >= 0) run_mode(mode);
++    nrio_recovery_shutdown();
++    if (!session_menu(true)) return 0;
+@@ -109,3 +278,3 @@ int main(void) {
 -  printf(UI_COLOR_INFO "Ready. Press START to exit.\n");
 -  
 -  return tud_idle();
-+  if (wait_for_cart()) {
-+    int mode = choose_mode();
-+    if (mode == NRIO_RAW_TABLE_REPAIR || mode == CHECK_RECOVERY) {
-+      boot_repair(mode == CHECK_RECOVERY);
-+    } else if (mode == NRIO_RAW_SAFE_MODE_INSTALL) {
-+      install_safe_mode();
-+    } else if (mode == CHECK_SAFE_MODE) {
-+      check_safe_mode();
-+    } else if (mode >= 0) {
-+      if (!msc_nand_initialize(mode)) {
-+        session_log("Could not initialize NAND mode.");
-+      } else if (start_usb()) {
-+        session_log("Ready. Eject before START.");
-+        tud_idle();
-+        session_log("USB NAND session ended.");
-+        msc_log_summary();
-+      }
-+    }
-+    nrio_recovery_shutdown();
++    consoleClear();
++    if (!probe_cart() && !wait_for_cart()) return 0;
 +  }
-+  offer_log();
-+  return 0;
-@@ -117 +264 @@ void tud_mount_cb(void) {
+@@ -117 +286 @@ void tud_mount_cb(void) {
 -  printf(UI_COLOR_INFO "Device connected.\n");
 +  session_log("USB host connected.");
-@@ -122 +269 @@ void tud_umount_cb(void) {
+@@ -122 +291 @@ void tud_umount_cb(void) {
 -  printf(UI_COLOR_INFO "Device disconnected.\n");
 +  session_log("USB host disconnected.");
 diff --git a/source/msc.c b/source/msc.c
-index 093e19f..db66039 100644
+index 093e19f..7e52dc4 100644
 --- a/source/msc.c
 +++ b/source/msc.c
 @@ -24,0 +25,2 @@
@@ -266,12 +289,15 @@ index 093e19f..db66039 100644
 -  ) {
 -    printf(UI_COLOR_WARNING "Enabled workaround for last sector access bug.\n");
 -    errata_last_sector = true;
-@@ -49 +47,16 @@ ITCM_CODE bool msc_dldi_initialize(void) {
+@@ -49 +47,19 @@ ITCM_CODE bool msc_dldi_initialize(void) {
 -
 +  if (!nrio_recovery_get_info(&raw_info)) {
 +    session_log("Could not read NAND geometry.");
 +    return false;
 +  }
++  log_drive = false;
++  ejected = false;
++  sectors_read = sectors_written = read_errors = write_errors = 0;
 +  raw_writable = raw_info.workspace_bytes != 0;
 +  session_log("NAND ID %08lx.", (unsigned long)raw_info.nand_id);
 +  session_log("%lu sectors, %s.", (unsigned long)raw_info.sectors,
@@ -284,7 +310,7 @@ index 093e19f..db66039 100644
 +  }
 +  if (raw_writable)
 +    session_log("Erase buffer: %lu pages.", (unsigned long)(raw_info.workspace_bytes / 2112));
-@@ -53,4 +66,5 @@ ITCM_CODE bool msc_dldi_initialize(void) {
+@@ -53,4 +69,5 @@ ITCM_CODE bool msc_dldi_initialize(void) {
 -// Invoked when received SCSI_CMD_INQUIRY
 -// Application fill vendor id, product id and revision with string up to 8, 16, 4 characters respectively
 -ITCM_CODE void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t product_id[16], uint8_t product_rev[4]) {
@@ -294,20 +320,20 @@ index 093e19f..db66039 100644
 +  ejected = false;
 +  log_drive = true;
 +}
-@@ -58,2 +72,3 @@ ITCM_CODE void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t pro
+@@ -58,2 +75,3 @@ ITCM_CODE void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t pro
 -  const char vid[] = "USB-NDS";
 -  const char rev[] = "1.0";
 +bool msc_is_log(void) {
 +  return log_drive;
 +}
-@@ -61,2 +76,4 @@ ITCM_CODE void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t pro
+@@ -61,2 +79,4 @@ ITCM_CODE void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t pro
 -  int name_len = strlen(io_dldi_data->friendlyName);
 -  if (name_len > 16) name_len = 16;
 +void msc_log_summary(void) {
 +  session_log("Read %lu sectors, %lu errors.", (unsigned long)sectors_read, (unsigned long)read_errors);
 +  session_log("Wrote %lu sectors, %lu errors.", (unsigned long)sectors_written, (unsigned long)write_errors);
 +}
-@@ -64,3 +81,7 @@ ITCM_CODE void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t pro
+@@ -64,3 +84,7 @@ ITCM_CODE void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t pro
 -  memcpy(vendor_id, vid, strlen(vid));
 -  memcpy(product_id, io_dldi_data->friendlyName, name_len);
 -  memcpy(product_rev, rev, strlen(rev));
@@ -318,18 +344,18 @@ index 093e19f..db66039 100644
 +  size_t length = strlen(name);
 +  memcpy(product_id, name, length > 16 ? 16 : length);
 +  memcpy(product_rev, "1.0", 3);
-@@ -69,2 +89,0 @@ ITCM_CODE void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t pro
+@@ -69,2 +92,0 @@ ITCM_CODE void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t pro
 -// Invoked when received Test Unit Ready command.
 -// return true allowing host to read/write this LUN e.g SD card inserted
-@@ -72 +90,0 @@ ITCM_CODE bool tud_msc_test_unit_ready_cb(uint8_t lun) {
+@@ -72 +93,0 @@ ITCM_CODE bool tud_msc_test_unit_ready_cb(uint8_t lun) {
 -  // RAM disk is ready until ejected
-@@ -74,2 +92 @@ ITCM_CODE bool tud_msc_test_unit_ready_cb(uint8_t lun) {
+@@ -74,2 +95 @@ ITCM_CODE bool tud_msc_test_unit_ready_cb(uint8_t lun) {
 -    // Additional Sense 3A-00 is NOT_FOUND
 -    tud_msc_set_sense(lun, SCSI_SENSE_NOT_READY, 0x3a, 0x00);
 +    tud_msc_set_sense(lun, SCSI_SENSE_NOT_READY, 0x3a, 0);
-@@ -78 +94,0 @@ ITCM_CODE bool tud_msc_test_unit_ready_cb(uint8_t lun) {
+@@ -78 +97,0 @@ ITCM_CODE bool tud_msc_test_unit_ready_cb(uint8_t lun) {
 -
-@@ -82,27 +98,5 @@ ITCM_CODE bool tud_msc_test_unit_ready_cb(uint8_t lun) {
+@@ -82,27 +101,5 @@ ITCM_CODE bool tud_msc_test_unit_ready_cb(uint8_t lun) {
 -DTCM_DATA static uint32_t block_count_cached = 0;
 -DTCM_DATA static uint8_t sec_buffer[512];
 -
@@ -362,7 +388,7 @@ index 093e19f..db66039 100644
 +  *block_count = log_drive ? SESSION_LOG_SECTORS : raw_info.sectors;
 +  *block_size = SESSION_LOG_SECTOR_BYTES;
 +}
-@@ -110,11 +104,6 @@ ITCM_CODE uint32_t msc_find_block_count(void) {
+@@ -110,11 +107,6 @@ ITCM_CODE uint32_t msc_find_block_count(void) {
 -    // Looks like an MBR header.
 -    block_count_cached = 0;
 -    for (uint16_t table_entry = 0x1BE; table_entry < 0x1FE; table_entry += 16) {
@@ -380,11 +406,11 @@ index 093e19f..db66039 100644
 +  if (load_eject && !start && !ejected) {
 +    session_log("Storage ejected.");
 +    ejected = true;
-@@ -122,2 +111 @@ ITCM_CODE uint32_t msc_find_block_count(void) {
+@@ -122,2 +114 @@ ITCM_CODE uint32_t msc_find_block_count(void) {
 -
 -  return block_count_cached;
 +  return true;
-@@ -126,7 +114,2 @@ ITCM_CODE uint32_t msc_find_block_count(void) {
+@@ -126,7 +117,2 @@ ITCM_CODE uint32_t msc_find_block_count(void) {
 -// Invoked when received SCSI_CMD_READ_CAPACITY_10 and SCSI_CMD_READ_FORMAT_CAPACITY to determine the disk size
 -// Application update block count and block size
 -ITCM_CODE void tud_msc_capacity_cb(uint8_t lun, uint32_t* block_count, uint16_t* block_size) {
@@ -394,7 +420,7 @@ index 093e19f..db66039 100644
 -  *block_size  = 512;
 +static bool valid_request(uint32_t lba, uint32_t offset, uint32_t size) {
 +  return !offset && !(size & 511) && lba < raw_info.sectors && (size >> 9) <= raw_info.sectors - lba;
-@@ -135,17 +118,6 @@ ITCM_CODE void tud_msc_capacity_cb(uint8_t lun, uint32_t* block_count, uint16_t*
+@@ -135,17 +121,6 @@ ITCM_CODE void tud_msc_capacity_cb(uint8_t lun, uint32_t* block_count, uint16_t*
 -// Invoked when received Start Stop Unit command
 -// - Start = 0 : stopped power mode, if load_eject = 1 : unload disk storage
 -// - Start = 1 : active mode, if load_eject = 1 : load disk storage
@@ -418,10 +444,10 @@ index 093e19f..db66039 100644
 +  if (!previous || (previous >> 14) != (*total >> 14)) {
 +    session_log("%s %lu sectors total.\nLast request at LBA 0x%lx.", operation,
 +                (unsigned long)*total, (unsigned long)lba);
-@@ -153,2 +124,0 @@ ITCM_CODE bool tud_msc_start_stop_cb(uint8_t lun, uint8_t power_condition, bool
+@@ -153,2 +127,0 @@ ITCM_CODE bool tud_msc_start_stop_cb(uint8_t lun, uint8_t power_condition, bool
 -
 -  return true;
-@@ -157,4 +127,13 @@ ITCM_CODE bool tud_msc_start_stop_cb(uint8_t lun, uint8_t power_condition, bool
+@@ -157,4 +130,13 @@ ITCM_CODE bool tud_msc_start_stop_cb(uint8_t lun, uint8_t power_condition, bool
 -// Callback invoked when received READ10 command.
 -// Copy disk's data to buffer (up to bufsize) and return number of copied bytes.
 -ITCM_CODE int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset, void* buffer, uint32_t bufsize) {
@@ -439,7 +465,7 @@ index 093e19f..db66039 100644
 +    tud_msc_set_sense(lun, SCSI_SENSE_ILLEGAL_REQUEST, 0x21, 0);
 +    return -1;
 +  }
-@@ -163,7 +142,5 @@ ITCM_CODE int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
+@@ -163,7 +145,5 @@ ITCM_CODE int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
 -  if (!(bufsize & 0x1FF) && !offset && io->readSectors(lba, bufsize >> 9, buffer)) {
 -    ui_toggle_blink_activity();
 -    return bufsize;
@@ -452,18 +478,18 @@ index 093e19f..db66039 100644
 +  if (ok) {
 +    record_transfer("Read", &sectors_read, lba, size >> 9);
 +    return size;
-@@ -170,0 +148,4 @@ ITCM_CODE int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
+@@ -170,0 +151,4 @@ ITCM_CODE int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
 +  ++read_errors;
 +  session_log("Read failed at LBA 0x%lx\n(%lu bytes).", (unsigned long)lba, (unsigned long)size);
 +  tud_msc_set_sense(lun, SCSI_SENSE_MEDIUM_ERROR, 0x11, 0);
 +  return -1;
-@@ -174,3 +155,2 @@ ITCM_CODE bool tud_msc_is_writable_cb(uint8_t lun) {
+@@ -174,3 +158,2 @@ ITCM_CODE bool tud_msc_is_writable_cb(uint8_t lun) {
 -  (void) lun;
 -
 -  return true;
 +  (void)lun;
 +  return !log_drive && raw_writable;
-@@ -179,4 +159,16 @@ ITCM_CODE bool tud_msc_is_writable_cb(uint8_t lun) {
+@@ -179,4 +162,16 @@ ITCM_CODE bool tud_msc_is_writable_cb(uint8_t lun) {
 -// Callback invoked when received WRITE10 command.
 -// Process data in buffer to disk's storage and return number of written bytes
 -ITCM_CODE int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset, uint8_t* buffer, uint32_t bufsize) {
@@ -484,12 +510,12 @@ index 093e19f..db66039 100644
 +    tud_msc_set_sense(lun, SCSI_SENSE_ILLEGAL_REQUEST, 0x21, 0);
 +    return -1;
 +  }
-@@ -183,0 +176,4 @@ ITCM_CODE int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
+@@ -183,0 +179,4 @@ ITCM_CODE int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
 +  if (!sectors_written && !write_errors)
 +    session_log("First write at LBA 0x%lx\n(%lu bytes).", (unsigned long)lba, (unsigned long)size);
 +  ui_toggle_blink_write_activity();
 +  bool ok = nrio_recovery_write(lba, size >> 9, buffer);
-@@ -185,7 +181,3 @@ ITCM_CODE int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
+@@ -185,7 +184,3 @@ ITCM_CODE int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
 -  if (!(bufsize & 0x1FF) && !offset && io->writeSectors(lba, bufsize >> 9, buffer)) {
 -    ui_toggle_blink_write_activity();
 -    return bufsize;
@@ -500,7 +526,7 @@ index 093e19f..db66039 100644
 +  if (ok) {
 +    record_transfer("Wrote", &sectors_written, lba, size >> 9);
 +    return size;
-@@ -192,0 +185,7 @@ ITCM_CODE int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
+@@ -192,0 +188,7 @@ ITCM_CODE int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
 +  ++write_errors;
 +  session_log("Write failed at LBA 0x%lx\n(%lu bytes).", (unsigned long)lba, (unsigned long)size);
 +  struct nrio_raw_write_error error;
