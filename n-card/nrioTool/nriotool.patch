@@ -6,7 +6,7 @@ index c3250e7..79fab94 100644
 -SOURCES  := source source/common
 +SOURCES  := source source/common source/recovery_nand
 diff --git a/arm9/source/main.cpp b/arm9/source/main.cpp
-index 3d1a9e7..ba6b653 100644
+index 3d1a9e7..7f40966 100644
 --- a/arm9/source/main.cpp
 +++ b/arm9/source/main.cpp
 @@ -1041,0 +1042,8 @@ void DoUdiskDump() {
@@ -34,7 +34,7 @@ index 3d1a9e7..ba6b653 100644
 -	printf("\n"); // printf("Press [Y] write banner to cart\n");
 -	printf("\n");
 -	printf("\n\n\n\n\n\n\n\nPress [B] to go to main menu...\n");
-+	printf("\n\n\n\nPress [B] to go to main menu...\n");
++	printf("\n\nPress [B] to go to main menu...\n");
 @@ -1061,0 +1076,4 @@ int UtilityMenu() {
 +			case KEY_Y:		{ if (wasDSi && sdMounted)value = 2; } break;
 +			case KEY_R:		{ if (wasDSi && sdMounted)value = 3; } break;
