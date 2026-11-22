@@ -6,83 +6,114 @@ index c3250e7..79fab94 100644
 -SOURCES  := source source/common
 +SOURCES  := source source/common source/recovery_nand
 diff --git a/arm9/source/main.cpp b/arm9/source/main.cpp
-index 3d1a9e7..2c6c4d1 100644
+index 3d1a9e7..6d83af7 100644
 --- a/arm9/source/main.cpp
 +++ b/arm9/source/main.cpp
-@@ -1042 +1042,9 @@ void DoUdiskDump() {
--int UtilityMenu() {
-+extern "C" void nrioTool_sd_recovery(int action);
+@@ -198,0 +199,7 @@ void CardInit(bool Silent = true, bool SkipSlotReset = false) {
++static const DISC_INTERFACE *GetSlot2Storage() {
++	const DISC_INTERFACE *storage = dldiGetInternal();
++	const u32 required = FEATURE_SLOT_GBA | FEATURE_MEDIUM_CANREAD | FEATURE_MEDIUM_CANWRITE;
++	const u32 mask = required | FEATURE_SLOT_NDS;
++	return storage && (storage->features & mask) == required ? storage : nullptr;
++}
 +
-+static void DoSDRecovery(int action) {
-+	if (!wasDSi || !sdMounted) return;
-+	nrioTool_sd_recovery(action);
-+	CardInit();
+@@ -215,2 +222,9 @@ void MountFATDevices(bool mountSD = true) {
+-		// if (!fatMounted)fatMounted = fatMountSimple("nrio", &io_nrio_);
+-		if (!fatMounted)fatMounted = fatInitDefault();
++		if (!fatMounted) {
++			const DISC_INTERFACE *slot2 = GetSlot2Storage();
++			if (slot2) {
++				sysSetCartOwner(BUS_OWNER_ARM9);
++				fatMounted = fatMountSimple("fat", slot2);
++			} else {
++				fatMounted = fatInitDefault();
++			}
++		}
+@@ -1042 +1056,15 @@ void DoUdiskDump() {
+-int UtilityMenu() {
++extern "C" void nrioTool_sd_recovery(int action, const char *root);
++
++static const char *RecoveryStorageRoot() {
++	if (wasDSi) return sdMounted ? "sd:/nrioFiles" : nullptr;
++	return fatMounted && GetSlot2Storage() ? "fat:/nrioFiles" : nullptr;
++}
++
++static void DoStorageRecovery(int action) {
++	if (const char *root = RecoveryStorageRoot()) {
++		nrioTool_sd_recovery(action, root);
++		CardInit();
++	}
 +}
 +
 +int UtilityMenu(bool recoveryOnly = false) {
-@@ -1046 +1054,2 @@ int UtilityMenu() {
+@@ -1043,0 +1072 @@ int UtilityMenu() {
++	const bool recoveryAvailable = RecoveryStorageRoot() != nullptr;
+@@ -1046,3 +1075,2 @@ int UtilityMenu() {
 -	if (wasDSi)printf("Press [A] to boot GodMode9Nrio\n");
+-	printf("\n");
+-	printf("Press [X] to build update file\n");
 +	if (wasDSi && !recoveryOnly)printf("Press [A] to boot GodMode9Nrio\n");
 +	else printf("\n");
-@@ -1048 +1057 @@ int UtilityMenu() {
--	printf("Press [X] to build update file\n");
+@@ -1049,0 +1078 @@ int UtilityMenu() {
 +	printf("%s\n", recoveryOnly ? "" : "Press [X] to build update file");
-@@ -1049,0 +1059,9 @@ int UtilityMenu() {
-+	if (wasDSi && sdMounted) {
+@@ -1050,0 +1080,9 @@ int UtilityMenu() {
++	if (recoveryAvailable) {
 +		printf("Press [Y] to fix DSi safe mode\n\n"
-+		       "Press [R] to install SD banner\n\n"
++		       "Press [R] to install banner\n\n"
 +		       "Press [SELECT] to save block 0\n\n"
 +		       "Press [UP] to restore ARM7\n\n"
 +		       "Press [Down] to restore block 0\n");
 +	} else {
 +		printf("\n\n\n\n\n\n\n\n\n");
 +	}
-@@ -1051,4 +1069 @@ int UtilityMenu() {
--	printf("\n");
+@@ -1052,3 +1090 @@ int UtilityMenu() {
 -	printf("\n"); // printf("Press [Y] write banner to cart\n");
 -	printf("\n");
 -	printf("\n\n\n\n\n\n\n\nPress [B] to go to main menu...\n");
 +	printf("%s\n", recoveryOnly ? "Press [B] to exit" : "Press [B] to go to main menu...");
-@@ -1059,2 +1074,2 @@ int UtilityMenu() {
+@@ -1059,2 +1095,2 @@ int UtilityMenu() {
 -			case KEY_A: 	{ if (wasDSi)value = 0; } break;
 -			case KEY_X:		{ value = 1; } break;
 +			case KEY_A: 	{ if (wasDSi && !recoveryOnly)value = 0; } break;
 +			case KEY_X:		{ if (!recoveryOnly)value = 1; } break;
-@@ -1061,0 +1077,5 @@ int UtilityMenu() {
-+			case KEY_Y:		{ if (wasDSi && sdMounted)value = 2; } break;
-+			case KEY_R:		{ if (wasDSi && sdMounted)value = 3; } break;
-+			case KEY_SELECT:	{ if (wasDSi && sdMounted)value = 5; } break;
-+			case KEY_UP:	{ if (wasDSi && sdMounted)value = 6; } break;
-+			case KEY_DOWN:	{ if (wasDSi && sdMounted)value = 7; } break;
-@@ -1068,0 +1089,15 @@ int UtilityMenu() {
-+static void RunSDRecoveryMenu() {
+@@ -1061,0 +1098,5 @@ int UtilityMenu() {
++			case KEY_Y:		{ if (recoveryAvailable)value = 2; } break;
++			case KEY_R:		{ if (recoveryAvailable)value = 3; } break;
++			case KEY_SELECT:	{ if (recoveryAvailable)value = 5; } break;
++			case KEY_UP:	{ if (recoveryAvailable)value = 6; } break;
++			case KEY_DOWN:	{ if (recoveryAvailable)value = 7; } break;
+@@ -1068,0 +1110,15 @@ int UtilityMenu() {
++static void RunStorageRecoveryMenu(const char *root) {
 +	if (SCFGUnlocked) enableSlot1();
-+	if (access("sd:/nrioFiles", F_OK) != 0) mkdir("sd:/nrioFiles", 0777);
++	if (access(root, F_OK) != 0) mkdir(root, 0777);
 +	for (;;) {
 +		switch (UtilityMenu(true)) {
-+			case 2: nrioTool_sd_recovery(0); break;
-+			case 3: nrioTool_sd_recovery(1); break;
-+			case 5: nrioTool_sd_recovery(2); break;
-+			case 6: nrioTool_sd_recovery(3); break;
-+			case 7: nrioTool_sd_recovery(4); break;
++			case 2: nrioTool_sd_recovery(0, root); break;
++			case 3: nrioTool_sd_recovery(1, root); break;
++			case 5: nrioTool_sd_recovery(2, root); break;
++			case 6: nrioTool_sd_recovery(3, root); break;
++			case 7: nrioTool_sd_recovery(4, root); break;
 +			case 4: return;
 +		}
 +	}
 +}
 +
-@@ -1188,0 +1224 @@ int main() {
-+	bool recoveryOnly = wasDSi && (keysHeld() & KEY_L);
-@@ -1201,0 +1238,6 @@ int main() {
+@@ -1188,0 +1245 @@ int main() {
++	bool recoveryOnly = (keysHeld() & KEY_L) != 0;
+@@ -1200,0 +1258,9 @@ int main() {
 +	if (recoveryOnly) {
-+		if (sdMounted) RunSDRecoveryMenu();
-+		else DoFATerror(true, true);
++		if (wasDSi || GetSlot2Storage()) MountFATDevices();
++		if (const char *root = RecoveryStorageRoot()) RunStorageRecoveryMenu(root);
++		else if (wasDSi) DoFATerror(true, true);
++		else DoError("Recovery needs writable Slot-2\n"
++		             "storage and its DLDI driver.");
 +		fifoSendValue32(FIFO_USER_03, 1);
 +		return 0;
 +	}
-@@ -1299 +1341,5 @@ int main() {
+@@ -1299 +1365,5 @@ int main() {
 -					// case 3: { DoBannerWrite(); } break;
-+					case 2: { DoSDRecovery(0); } break;
-+					case 3: { DoSDRecovery(1); } break;
-+					case 5: { DoSDRecovery(2); } break;
-+					case 6: { DoSDRecovery(3); } break;
-+					case 7: { DoSDRecovery(4); } break;
++					case 2: { DoStorageRecovery(0); } break;
++					case 3: { DoStorageRecovery(1); } break;
++					case 5: { DoStorageRecovery(2); } break;
++					case 6: { DoStorageRecovery(3); } break;
++					case 7: { DoStorageRecovery(4); } break;
