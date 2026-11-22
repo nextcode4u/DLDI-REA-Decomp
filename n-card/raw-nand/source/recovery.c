@@ -45,7 +45,7 @@ void nrio_recovery_shutdown(void)
 
 bool nrio_recovery_select_mode(enum nrio_raw_mode mode)
 {
-    if (!geometry.sectors || mode_locked || (unsigned)mode > NRIO_RAW_TABLE_REPAIR ||
+    if (!geometry.sectors || mode_locked || (unsigned)mode > NRIO_RAW_SAFE_MODE_INSTALL ||
         (mode == NRIO_RAW_BANNER_WRITE && !banner_is_armed())) return false;
     active_mode = mode;
     mode_locked = true;
@@ -72,6 +72,13 @@ bool nrio_recovery_bind_workspace(void *buffer, uint32_t size)
 void nrio_recovery_get_write_error(struct nrio_raw_write_error *error)
 {
     *error = write_error;
+}
+
+bool nrio_recovery_install_safe_mode(void)
+{
+    if (active_mode != NRIO_RAW_SAFE_MODE_INSTALL || !workspace ||
+        write_error.stage != NRIO_RAW_WRITE_NONE) return false;
+    return restore_safe_mode(geometry.pages_per_block, workspace, &write_error);
 }
 
 bool nrio_recovery_repair_table(const struct nrio_raw_table_plan *plan)
@@ -105,7 +112,7 @@ bool nrio_recovery_read(uint32_t sector, uint32_t count, void *buffer)
 bool nrio_recovery_write(uint32_t sector, uint32_t count, const void *buffer)
 {
     if (!workspace || !writable_mode() || write_error.stage != NRIO_RAW_WRITE_NONE ||
-        !buffer || !valid_range(sector, count) || active_mode == NRIO_RAW_TABLE_REPAIR) return false;
+        !buffer || !valid_range(sector, count) || active_mode >= NRIO_RAW_TABLE_REPAIR) return false;
     // Erasing to update any page of block zero would also erase the boot pages.
     if (active_mode == NRIO_RAW_MAIN_PROTECTED && count && sector < geometry.pages_per_block * SECTORS_PER_PAGE)
         return false;

@@ -19,6 +19,7 @@ On a DS or DS Lite with the Slot-2 USB writer, choose a mode with **Up/Down**, t
 | Spare: recovery write | Write packed spare records, subject to preflight |
 | Banner: prepared ROM only | Write the prepared page 4 payload after checking the target spare snapshot |
 | Repair primary boot table | On-console repair using the target cart's surviving uDisk mapping |
+| Install stock safe mode | On-console install using a prepared ROM with the target's complete block-0 snapshot |
 | Check recovery only | Run the same preflight with read-only NAND access and export the result |
 
 The older single-mode binaries used in the hardware reports are available in the [archived revision](https://github.com/nextcode4u/DLDI-REA-Decomp/tree/0b09821d66c6e91f2a94383f055720258bcfd1fb/n-card/raw-nand/compiled).
@@ -134,7 +135,7 @@ This approach keeps the primary table pointing to safe mode so the stock uDisk p
 
 Apache's later `dsfireline.bin` backup covers main NAND from `0x00000` through `0x7FFFF`. Its primary table maps the original `safe.bak` byte for byte starting at `0x20000`, and its secondary table points to uDisk at `0x80000`, immediately beyond the backup. Comparing Apache's patched image with the original, and independently preparing a ROM with the toolkit from that same backup, identified the same two affected NAND pages, `0x40` (ROM header) and `0x68` (ARM7 slot). Both are in erase block 0. Both relocation stubs copied the original ARM7 bytes and preserved the following eight bytes in emulation.
 
-The supplied `dsfireline_spare.bin` covers only the first eight spare records (`0x200` packed bytes). A full snapshot of block 0 for this 128-page geometry requires the first `0x2000` packed spare bytes in addition to the first `0x40000` main bytes. The toolkit successfully prepares a test ROM from the supplied files and reports the missing spare coverage. A targeted write still needs the full block snapshot and hardware verification.
+The supplied `dsfireline_spare.bin` covers only the first eight spare records (`0x200` packed bytes). A full snapshot of block 0 for this 128-page geometry requires the first `0x2000` packed spare bytes in addition to the first `0x40000` main bytes. The toolkit successfully prepares a test ROM from the supplied files and reports the missing spare coverage. The targeted installer requires the full block snapshot. Its physical write path still needs a hardware test.
 
 ### Prepare stock safe mode in the recovery toolkit
 
@@ -142,13 +143,24 @@ The supplied `dsfireline_spare.bin` covers only the first eight spare records (`
 2. Open **Stock safe mode** in the Windows toolkit. Select the two dumps and the erase-buffer page count from the DS session log.
 3. Choose **Prepare safe-mode ROM** and save `safe-mode-dsi-test.nds`. The session log shows the affected NAND erase blocks and flags missing backup coverage.
 
-The toolkit follows the primary table at `0x8000` to extract a supported compact safe-mode ROM from the main dump. It stages ARM7 at Apache's tested address, `0x02380000`, using the same `0x200`-byte load size. The generated stub copies the original `0x38` bytes back into ARM7 WRAM before jumping to the original entry. The output retains the original ROM length. It uses the target's own backup and needs no separate ROM download or XuluMenu installation. Preparation runs offline and produces a ROM for testing. Installing this ROM requires a separate write workflow verified on the target cart.
+The toolkit follows the primary table at `0x8000` to extract a supported compact safe-mode ROM from the main dump. It stages ARM7 at Apache's tested address, `0x02380000`, using the same `0x200`-byte load size. The generated stub copies the original `0x38` bytes back into ARM7 WRAM before jumping to the original entry. The output retains the original ROM length. It uses the target's own backup and needs no separate ROM download or XuluMenu installation. Preparation runs offline and produces a ROM for testing. Use the targeted installer workflow below to prepare a DS app that can write the patch back.
 
 To prepare the same file from the command line, use the page count from the target's DS log.
 
 ```sh
 python3 inspect_boot.py target-main.bin target-spare.bin --prepare-safe-mode safe-mode-dsi-test.nds --pages-per-block 128
 ```
+
+### Targeted stock safe-mode install
+
+This experimental path uses the Fire Line's verified compact ROM layout and requires both changed sectors to map to erase block 0. It has passed Slot-1 transport emulation. The first physical install still needs a hardware test.
+
+1. Keep a fresh full block-0 backup from the target. For 128-page blocks, capture main offsets `0x00000–0x3FFFF` and packed spare offsets `0x0000–0x1FFF`. For 64-page blocks, capture main offsets `0x00000–0x1FFFF` and packed spare offsets `0x0000–0x0FFF`. The main dump must also cover the mapped safe-mode ROM.
+2. In **Stock safe mode**, choose **Prepare targeted installer**. Save the generated `nrio-stock-safe-mode-installer.nds` privately. It contains the cart's original block-0 data, including the spare records.
+3. Launch the prepared installer from a separate homebrew launcher on a DS or DS Lite, then insert the target cart at the detection screen. Choose **Install stock safe mode**. Hold **L + R** and press **A** to confirm, or press **B** to cancel. The app checks the live block's main and spare data against the embedded snapshot before any erase. If the snapshot matches, it stages the two mapped ROM sectors and their ECC, rewrites block 0 once, and verifies every main and spare byte against the staged image.
+4. Keep the console powered until the verification result appears. Export `SESSION.TXT`, then test normal DSi boot with the target cart. Verify stock uDisk and USB safe mode on DS or DS Lite. Keep the original backups for recovery if a power loss or NAND write failure interrupts the rewrite.
+
+The app refuses a changed snapshot, mismatched erase geometry, or invalid safe-mode mapping. The general USB writer retains its spare preflight. For CLI preparation, use `python3 arm_safe_mode.py target-main.bin target-spare.bin --pages-per-block 128` with the page count from the target's log.
 
 Use the [offline patcher](patch_safe_mode.py) with the original, extracted safe-mode `.nds` and a confirmed free staging address in main RAM. Replace `STAGING_ADDRESS` with that address in hexadecimal.
 

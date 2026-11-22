@@ -85,6 +85,27 @@ static bool fail_write(struct nrio_raw_write_error *error, u32 stage, u32 page, 
     return false;
 }
 
+static bool program_and_verify_block(u32 page, u32 pages, const u8 *records,
+                                     struct nrio_raw_write_error *error)
+{
+    if (!nand_erase_block(page))
+        return fail_write(error, NRIO_RAW_WRITE_ERASE, page, 0);
+    for (u32 i = 0; i < pages; ++i) {
+        const u8 *record = records + i * PAGE_RECORD_SIZE;
+        if (!erased(record) && !nand_program_page(page + i, record))
+            return fail_write(error, NRIO_RAW_WRITE_PROGRAM, page + i, 0);
+    }
+
+    u8 verified[PAGE_RECORD_SIZE];
+    for (u32 i = 0; i < pages; ++i) {
+        if (!read_page(page + i, verified))
+            return fail_write(error, NRIO_RAW_WRITE_VERIFY_READ, page + i, 0);
+        if (!equal(verified, records + i * PAGE_RECORD_SIZE, PAGE_RECORD_SIZE))
+            return fail_write(error, NRIO_RAW_WRITE_VERIFY_DATA, page + i, 0);
+    }
+    return true;
+}
+
 static bool rewrite_block(u32 page, u32 pages, u32 offset, u32 count,
                           const u8 *input, u8 *records, struct nrio_raw_write_error *error,
                           enum nrio_raw_mode mode, const u8 *expected_spare)
@@ -137,22 +158,7 @@ static bool rewrite_block(u32 page, u32 pages, u32 offset, u32 count,
     }
     if (!changed) return true;
 
-    if (!nand_erase_block(page))
-        return fail_write(error, NRIO_RAW_WRITE_ERASE, page, 0);
-    for (u32 i = 0; i < pages; ++i) {
-        const u8 *record = records + i * PAGE_RECORD_SIZE;
-        if (!erased(record) && !nand_program_page(page + i, record))
-            return fail_write(error, NRIO_RAW_WRITE_PROGRAM, page + i, 0);
-    }
-
-    u8 verified[PAGE_RECORD_SIZE];
-    for (u32 i = 0; i < pages; ++i) {
-        if (!read_page(page + i, verified))
-            return fail_write(error, NRIO_RAW_WRITE_VERIFY_READ, page + i, 0);
-        if (!equal(verified, records + i * PAGE_RECORD_SIZE, PAGE_RECORD_SIZE))
-            return fail_write(error, NRIO_RAW_WRITE_VERIFY_DATA, page + i, 0);
-    }
-    return true;
+    return program_and_verify_block(page, pages, records, error);
 }
 
 bool restore_sectors(u32 sector, u32 count, const u8 *buffer, u32 pages_per_block, u8 *workspace,
@@ -200,4 +206,85 @@ bool restore_boot_table(const struct nrio_raw_table_plan *plan, u32 pages_per_bl
     return rewrite_block(0, pages_per_block, NRIO_RAW_PRIMARY_TABLE / SECTOR_SIZE,
                          NRIO_RAW_TABLE_BYTES / SECTOR_SIZE, plan->table, workspace, error,
                          NRIO_RAW_TABLE_REPAIR, plan->expected_spare);
+}
+
+// The desktop toolkit fills this fixed-size plan in a copy of the DS app.
+static volatile struct {
+    u8 signature[16];
+    u32 pages;
+    u32 sectors[2];
+    u8 expected[NRIO_RAW_WORKSPACE_BYTES];
+    u8 replacement[2][SECTOR_SIZE];
+} safe_mode_plan = {
+    .signature = "NRIO-SAFE-v1",
+};
+
+bool nrio_recovery_safe_mode_ready(void)
+{
+    return safe_mode_plan.pages == 64 || safe_mode_plan.pages == 128;
+}
+
+static const u8 *main_sector(const u8 *records, u32 sector)
+{
+    return records + sector / SECTORS_PER_PAGE * PAGE_RECORD_SIZE +
+           sector % SECTORS_PER_PAGE * SECTOR_SIZE;
+}
+
+static bool safe_mode_locations_match(const u8 *records, u32 sectors)
+{
+    enum { MAP_BLOCK = 0x4000, MIN_ROM_SECTOR = 0x18000 / SECTOR_SIZE };
+    u32 header_sector = safe_mode_plan.sectors[0];
+    u32 arm7_sector = safe_mode_plan.sectors[1];
+    if (header_sector < MIN_ROM_SECTOR || header_sector >= sectors ||
+        arm7_sector < MIN_ROM_SECTOR || arm7_sector >= sectors || arm7_sector == header_sector)
+        return false;
+    const u8 *table = main_sector(records, NRIO_RAW_PRIMARY_TABLE / SECTOR_SIZE);
+    const u8 *header = main_sector(records, header_sector);
+    const u8 *before_table = main_sector(records, NRIO_RAW_PRIMARY_TABLE / SECTOR_SIZE - 1);
+    if (load_word(before_table + SECTOR_SIZE - 4) == UINT32_C(0x45464151) ||
+        load_word(table) != header_sector * SECTOR_SIZE ||
+        load_word(header) != UINT32_C(0xea00002e) ||
+        load_word(header + 0x0c) != UINT32_C(0x23232323) ||
+        load_word(header + 0x84) != 0x200 ||
+        load_word(header + 0x38) != UINT32_C(0x03800000) ||
+        load_word(header + 0x3c) != 0x38) return false;
+
+    u32 source = load_word(header + 0x30);
+    u32 size = load_word(header + 0x80);
+    u32 entry_offset = source / MAP_BLOCK * sizeof(u32);
+    if (source < SECTOR_SIZE || source % SECTOR_SIZE || source >= size ||
+        size - source < SECTOR_SIZE || entry_offset >= NRIO_RAW_TABLE_BYTES) return false;
+    u32 entry_sector = (NRIO_RAW_PRIMARY_TABLE + entry_offset) / SECTOR_SIZE;
+    u32 mapped = load_word(main_sector(records, entry_sector) + entry_offset % SECTOR_SIZE);
+    return mapped < sectors * SECTOR_SIZE && mapped % MAP_BLOCK == 0 &&
+           mapped + source % MAP_BLOCK == arm7_sector * SECTOR_SIZE;
+}
+
+bool restore_safe_mode(u32 pages, u8 *records, struct nrio_raw_write_error *error)
+{
+    if (!nrio_recovery_safe_mode_ready() || safe_mode_plan.pages != pages)
+        return fail_write(error, NRIO_RAW_WRITE_SAFE_MODE_PLAN, 0, pages);
+    for (u32 i = 0; i < pages; ++i) {
+        u8 *record = records + i * PAGE_RECORD_SIZE;
+        if (!read_page(i, record)) return fail_write(error, NRIO_RAW_WRITE_READ_BLOCK, i, 0);
+        if (!equal(record, safe_mode_plan.expected + i * PAGE_RECORD_SIZE, PAGE_SIZE))
+            return fail_write(error, NRIO_RAW_WRITE_SNAPSHOT, i, 0);
+        if (!equal(record + PAGE_SIZE, safe_mode_plan.expected + i * PAGE_RECORD_SIZE + PAGE_SIZE, SPARE_SIZE))
+            return fail_write(error, NRIO_RAW_WRITE_SNAPSHOT, i, 1);
+    }
+
+    if (!safe_mode_locations_match(records, pages * SECTORS_PER_PAGE))
+        return fail_write(error, NRIO_RAW_WRITE_SAFE_MODE_PLAN, 0, 0);
+    bool changed = false;
+    for (u32 i = 0; i < 2; ++i) {
+        u32 sector = safe_mode_plan.sectors[i];
+        u32 column = sector % SECTORS_PER_PAGE;
+        u8 *record = records + (sector / SECTORS_PER_PAGE) * PAGE_RECORD_SIZE;
+        u8 *target = record + column * SECTOR_SIZE;
+        if (equal(target, safe_mode_plan.replacement[i], SECTOR_SIZE)) continue;
+        for (u32 j = 0; j < SECTOR_SIZE; ++j) target[j] = safe_mode_plan.replacement[i][j];
+        regenerate_ecc(record, column);
+        changed = true;
+    }
+    return !changed || program_and_verify_block(0, pages, records, error);
 }

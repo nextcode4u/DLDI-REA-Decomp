@@ -51,6 +51,8 @@ void session_log_write_error(const struct nrio_raw_write_error *error)
         [NRIO_RAW_WRITE_VERIFY_READ] = "readback",
         [NRIO_RAW_WRITE_VERIFY_DATA] = "readback mismatch",
         [NRIO_RAW_WRITE_TABLE_SOURCE] = "source table changed or unreadable",
+        [NRIO_RAW_WRITE_SNAPSHOT] = "snapshot mismatch (0 main, 1 spare)",
+        [NRIO_RAW_WRITE_SAFE_MODE_PLAN] = "safe-mode map or geometry mismatch",
     };
     if (error->stage && error->stage < sizeof(stages) / sizeof(stages[0])) {
         session_log("%s\nPage 0x%lx, detail 0x%lx.", stages[error->stage],

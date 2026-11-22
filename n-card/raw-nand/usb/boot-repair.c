@@ -203,3 +203,28 @@ void boot_repair(bool check_only)
     }
     session_log("Verified the rewritten block.\nRestart to test uDisk boot.");
 }
+
+void install_safe_mode(void)
+{
+    struct nrio_raw_info info;
+    if (!nrio_recovery_safe_mode_ready()) {
+        session_log("Prepare a safe-mode installer\nusing the desktop toolkit.");
+        return;
+    }
+    if (!select_view(NRIO_RAW_SAFE_MODE_INSTALL, &info) ||
+        !nrio_recovery_bind_workspace(raw_workspace, sizeof(raw_workspace))) {
+        session_log("Could not initialize the installer.");
+        return;
+    }
+    session_log("NAND ID %08lx. Checking the\nentire block-0 backup.",
+                (unsigned long)info.nand_id);
+    session_log("If it matches, block 0 will\nbe erased, rewritten, verified.");
+    if (!nrio_recovery_install_safe_mode()) {
+        struct nrio_raw_write_error error;
+        nrio_recovery_get_write_error(&error);
+        session_log("Safe-mode install failed.");
+        session_log_write_error(&error);
+        return;
+    }
+    session_log("Safe-mode install verified.\nRestart on the DSi to test boot.");
+}

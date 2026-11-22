@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
 from arm_banner import ARMED_ROM, default_template, prepare_from_dumps
+from arm_safe_mode import INSTALLER_ROM, prepare_installer
 from inspect_boot import (
     SECONDARY_TABLE,
     SPARE_SECTOR_SIZE,
@@ -69,6 +70,9 @@ class RecoveryTool:
                   wraplength=540).grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 8))
         ttk.Button(safe_mode, text="Prepare safe-mode ROM…", command=self.prepare_safe_mode).grid(
             row=4, column=0, columnspan=3, sticky="w")
+        ttk.Button(safe_mode, text="Prepare targeted installer…",
+                   command=self.prepare_safe_mode_installer).grid(
+            row=5, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         banner.columnconfigure(1, weight=1)
         self.file_field(banner, 0, "Target spare dump", self.spare_dump)
@@ -224,6 +228,19 @@ class RecoveryTool:
             patched, report = prepare_stock_safe_mode(main, spare, int(self.erase_pages.get()))
             self.log(report)
             self.save_bytes("safe-mode-dsi-test.nds", patched)
+        except (OSError, ValueError) as error:
+            self.show_error(error)
+
+    def prepare_safe_mode_installer(self):
+        try:
+            main = self.dump_file(self.main_dump, "target main dump")
+            spare = self.dump_file(self.spare_dump, "target spare dump")
+            if not self.erase_pages.get():
+                raise ValueError("Select the erase-buffer page count from the DS log.")
+            self.log(f"Preparing targeted installer.\nTarget main: {main}\nTarget spare: {spare}")
+            image, report = prepare_installer(main, spare, int(self.erase_pages.get()), default_template())
+            self.log(report)
+            self.save_bytes(INSTALLER_ROM, image)
         except (OSError, ValueError) as error:
             self.show_error(error)
 

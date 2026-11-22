@@ -10,6 +10,7 @@ from unicorn.arm_const import (
 )
 
 from arm_banner import SIGNATURE, arm
+from arm_safe_mode import SIGNATURE as SAFE_MODE_SIGNATURE
 
 CARD = 0x04000000
 CTRL = CARD + 0x1a4
@@ -18,7 +19,7 @@ FIFO = 0x04100010
 RAM = 0x02100000
 STOP = RAM + 0xf0000
 PAGE_BYTES = 2112
-MAIN_READ, SPARE_READ, PROTECTED, MAIN_WRITE, SPARE_WRITE, BANNER, TABLE_REPAIR = range(7)
+MAIN_READ, SPARE_READ, PROTECTED, MAIN_WRITE, SPARE_WRITE, BANNER, TABLE_REPAIR, SAFE_MODE = range(8)
 
 
 class Image:
@@ -52,6 +53,7 @@ def load_recovery(path):
         'startup': 'startup', 'shutdown': 'shutdown', 'read': 'read', 'write': 'write',
         'mode': 'select_mode', 'info': 'get_info', 'workspace': 'bind_workspace',
         'error': 'get_write_error', 'repair': 'repair_table',
+        'safe_ready': 'safe_mode_ready', 'safe_install': 'install_safe_mode',
     }
     with path.open('rb') as source:
         elf = ELFFile(source)
@@ -395,7 +397,7 @@ def check_toolkit(image, chip):
     device.vm.mem_write(CARD + 0x204, b'\x80\x08')
     assert device.run('startup')
     assert device.vm.mem_read(CARD + 0x204, 2) == b'\x80\x00'  # Claim Slot-1 only.
-    assert not select_mode(device, 7)
+    assert not select_mode(device, SAFE_MODE + 1)
     assert device.run('read', 0, 1, RAM)
     assert not select_mode(device, MAIN_WRITE)
     assert device.run('startup')
@@ -468,6 +470,92 @@ def check_same_cart_repair(image, chip):
     assert not device.erased_blocks
 
 
+def check_safe_mode_install(image, chip, records, sectors, replacements):
+    plan = (struct.pack('<III', len(records), *sectors) + b''.join(records).ljust(128 * PAGE_BYTES, b'\0')
+            + b''.join(replacements))
+    regions = []
+    for address, size, data in image.regions:
+        start = data.find(SAFE_MODE_SIGNATURE)
+        if start != -1:
+            start += len(SAFE_MODE_SIGNATURE)
+            end = start + len(plan)
+            assert data[start:end] == bytes(len(plan))
+            data = data[:start] + plan + data[end:]
+        regions.append((address, size, data))
+    armed = Image(regions, image.entries)
+
+    def setup(app=armed):
+        device = recovery_device(app, chip, SAFE_MODE)
+        device.flash.update(enumerate(records))
+        device.flash[len(records)] = b'\x88' * PAGE_BYTES
+        return device
+
+    device = setup(image)
+    assert not device.run('safe_ready')
+    assert not device.run('safe_install') and not device.erased_blocks
+
+    device = setup()
+    assert device.run('safe_ready')
+    assert not device.run('write', sectors[0], 1, RAM)
+    assert device.run('safe_install')
+    assert device.erased_blocks == [0]
+    changed = {sector // 4: (sector % 4, replacement) for sector, replacement in zip(sectors, replacements)}
+    for page, original in enumerate(records):
+        stored = device.record(page)
+        if page not in changed:
+            assert stored == original
+            continue
+        column, replacement = changed[page]
+        main_start = column * 512
+        assert stored[:2048] == original[:main_start] + replacement + original[main_start + 512:2048]
+        ecc = 2048 + column * 16
+        assert stored[2048:ecc] == original[2048:ecc]
+        assert stored[ecc + 16:] == original[ecc + 16:]
+        for index in (0, 1, 2, 3, 7, 11, 15):
+            assert stored[ecc + index] == original[ecc + index]
+        assert stored[ecc + 4:ecc + 7] == stored[ecc + 8:ecc + 11] == stored[ecc + 12:ecc + 15]
+    assert device.record(len(records)) == b'\x88' * PAGE_BYTES
+
+    for offset, detail in ((17, 0), (2048 + 51, 1)):
+        device = setup()
+        page = len(records) - 1
+        record = bytearray(records[page])
+        record[offset] ^= 1
+        device.flash[page] = bytes(record)
+        assert not device.run('safe_install')
+        assert write_error(device) == (8, page, detail)
+        assert not device.erased_blocks
+
+    old_locations = SAFE_MODE_SIGNATURE + plan[:12]
+    new_locations = SAFE_MODE_SIGNATURE + struct.pack('<III', len(records), sectors[0], sectors[1] + 1)
+    bad_plan = Image([(address, size, data.replace(old_locations, new_locations, 1))
+                      for address, size, data in armed.regions], armed.entries)
+    device = setup(bad_plan)
+    assert not device.run('safe_install')
+    assert write_error(device)[0] == 9 and not device.erased_blocks
+
+    device = setup()
+    device.failure = 'readback'
+    assert not device.run('safe_install')
+    assert write_error(device)[0] == 6 and device.erased_blocks == [0]
+
+
+def check_safe_mode_fixture(image):
+    sectors = (0x100, 0x1a1)
+    records = [bytearray(b'\xff' * PAGE_BYTES) for _ in range(128)]
+    records[1][2048] = 0
+    table = records[16]
+    struct.pack_into('<I', table, 0, 0x20000)
+    struct.pack_into('<I', table, 5 * 4, 0x34000)
+    header = records[sectors[0] // 4]
+    struct.pack_into('<I', header, 0, 0xea00002e)
+    header[0x0c:0x10] = b'####'
+    struct.pack_into('<4I', header, 0x30, 0x14200, 0x03800000, 0x03800000, 0x38)
+    struct.pack_into('<II', header, 0x80, 0x14e40, 0x200)
+    replacements = (b'\x13' * 512, b'\x37' * 512)
+    check_safe_mode_install(image, 0x2514d3ec, [bytes(record) for record in records], sectors, replacements)
+
+
 def check_dldi(image, chip):
     device = started_device(image, chip)
     assert device.run('inserted') and device.run('clear')
@@ -499,3 +587,5 @@ if __name__ == '__main__':
             check_same_cart_repair(toolkit, chip)
         check_spare(toolkit, 0x3500d5ec, 1_048_576)
         print('Recovery app: all modes, same-cart repair, and write protections passed')
+        check_safe_mode_fixture(toolkit)
+        print('Safe-mode installer: exact block preflight, ECC scope, and readback verification passed')

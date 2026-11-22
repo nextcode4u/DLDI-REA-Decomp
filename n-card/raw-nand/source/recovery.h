@@ -25,6 +25,8 @@ enum nrio_raw_write_stage {
     NRIO_RAW_WRITE_VERIFY_READ,
     NRIO_RAW_WRITE_VERIFY_DATA,
     NRIO_RAW_WRITE_TABLE_SOURCE,
+    NRIO_RAW_WRITE_SNAPSHOT,
+    NRIO_RAW_WRITE_SAFE_MODE_PLAN,
 };
 
 /* Select the view once, before processing sector I/O. */
@@ -36,6 +38,7 @@ enum nrio_raw_mode {
     NRIO_RAW_SPARE_WRITE,
     NRIO_RAW_BANNER_WRITE,
     NRIO_RAW_TABLE_REPAIR,
+    NRIO_RAW_SAFE_MODE_INSTALL,
 };
 
 struct nrio_raw_table_plan {
@@ -55,12 +58,15 @@ bool nrio_recovery_select_mode(enum nrio_raw_mode mode);
 bool nrio_recovery_get_info(struct nrio_raw_info *info);
 bool nrio_recovery_bind_workspace(void *buffer, uint32_t size);
 void nrio_recovery_get_write_error(struct nrio_raw_write_error *error);
+bool nrio_recovery_safe_mode_ready(void);
+bool nrio_recovery_install_safe_mode(void);
 bool nrio_recovery_repair_table(const struct nrio_raw_table_plan *plan);
 bool nrio_recovery_read(uint32_t sector, uint32_t count, void *buffer);
 bool nrio_recovery_write(uint32_t sector, uint32_t count, const void *buffer);
 
 bool restore_sectors(uint32_t sector, uint32_t count, const uint8_t *buffer, uint32_t pages_per_block,
                      uint8_t *workspace, struct nrio_raw_write_error *error, enum nrio_raw_mode mode);
+bool restore_safe_mode(uint32_t pages_per_block, uint8_t *workspace, struct nrio_raw_write_error *error);
 bool restore_boot_table(const struct nrio_raw_table_plan *plan, uint32_t pages_per_block, uint8_t *workspace,
                         struct nrio_raw_write_error *error);
 

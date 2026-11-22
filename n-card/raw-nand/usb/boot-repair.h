@@ -7,5 +7,6 @@
 
 extern uint32_t raw_workspace[NRIO_RAW_WORKSPACE_BYTES / sizeof(uint32_t)];
 void boot_repair(bool check_only);
+void install_safe_mode(void);
 
 #endif
