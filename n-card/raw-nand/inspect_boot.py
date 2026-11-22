@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import struct
+import zlib
 from pathlib import Path
 
 from patch_safe_mode import STOCK_STAGE_ADDRESS, is_compact_safe_mode, patch_stock_rom
@@ -30,6 +31,48 @@ def read_prefix(path, size):
     if len(data) != size:
         raise ValueError(f"{path} must contain at least 0x{size:X} bytes")
     return data
+
+
+def check_block0_backup(main_dump, spare_dump, info_path):
+    manifest_format = struct.Struct("<8s4I512s512s")
+    with info_path.open("rb") as source:
+        manifest = source.read(manifest_format.size + 1)
+    if len(manifest) != manifest_format.size:
+        raise ValueError("backup.info has an unexpected length.")
+    tag, nand_id, pages, main_crc, spare_crc, _, anchor_80000 = manifest_format.unpack(manifest)
+    if tag != b"NRIOB01\0" or pages not in (64, 128):
+        raise ValueError("backup.info has an invalid signature or page count.")
+
+    lines = [f"NAND ID 0x{nand_id:08X}, {pages} pages per erase block"]
+    valid = True
+    main = b""
+    for label, path, size, expected in (
+        ("Main", main_dump, pages * PAGE_SIZE, main_crc),
+        ("Spare", spare_dump, pages * SPARE_SIZE, spare_crc),
+    ):
+        with path.open("rb") as source:
+            data = source.read(size + 1)
+        if label == "Main" and len(data) >= PRIMARY_TABLE + 4:
+            main = data
+        if len(data) != size:
+            lines.append(f"{label}: expected exactly 0x{size:X} bytes.")
+            valid = False
+            continue
+        actual = zlib.crc32(data) ^ 0xFFFFFFFF
+        matches = actual == expected
+        status = "matches" if matches else "does not match"
+        lines.append(f"{label} CRC 0x{actual:08X} {status} manifest 0x{expected:08X}.")
+        valid &= matches
+
+    if main:
+        address, = struct.unpack_from("<I", main, PRIMARY_TABLE)
+        lines.append(f"First primary map entry in the main file: 0x{address:X}.")
+        if (address == USUAL_UDISK_START and anchor_80000[:4] == b"\x2e\x00\x00\xea" and
+                anchor_80000[12:16] == b"####"):
+            size, = struct.unpack_from("<I", anchor_80000, 0x80)
+            lines.append(f"The manifest captured a compact ROM header at 0x80000 "
+                         f"with declared size 0x{size:X}.")
+    return "\n".join(lines), valid
 
 
 def describe(data):
@@ -276,6 +319,7 @@ def main():
     parser.add_argument("main_dump", type=Path, help="main-only dump from Main: read only")
     parser.add_argument("spare_dump", type=Path, help="spare-only dump from Spare: read only")
     safe_mode = parser.add_mutually_exclusive_group()
+    safe_mode.add_argument("--backup-info", type=Path, help="check a block-0 backup against its backup.info")
     safe_mode.add_argument("--safe-mode-rom", type=Path, help="original safe-mode ROM from the target cart")
     safe_mode.add_argument("--prepare-safe-mode", type=Path, metavar="OUTPUT",
                            help="extract and patch the stock safe-mode ROM from the main dump")
@@ -289,7 +333,12 @@ def main():
     if args.pages_per_block and not (args.safe_mode_rom or args.prepare_safe_mode):
         parser.error("--pages-per-block requires a safe-mode action")
     try:
-        if args.prepare_safe_mode:
+        if args.backup_info:
+            report, valid = check_block0_backup(args.main_dump, args.spare_dump, args.backup_info)
+            print(report)
+            if not valid:
+                return 1
+        elif args.prepare_safe_mode:
             patched, report = prepare_stock_safe_mode(args.main_dump, args.spare_dump, args.pages_per_block)
             with args.prepare_safe_mode.open("xb") as output:
                 output.write(patched)
@@ -304,4 +353,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

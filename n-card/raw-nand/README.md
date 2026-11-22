@@ -37,6 +37,28 @@ The archive has a Fire Line early main-area dump and an ExpressCard logical ROM 
 
 A local reference candidate was prepared from the 8 Gbit DS Linker that Apache confirmed booted after the targeted safe-mode install. Its complete block-0 main and spare data restored an erased block and passed exact readback in emulation. The captured main image ends at `0x80000`, so the candidate lacks the 512-byte compatibility sample at that address. A fresh nrioTool **SELECT** backup on the working reference cart records that sample in `backup.info`. Cross-cart compatibility remains untested.
 
+### Check a block-0 backup before using it
+
+Run this read-only check with the three files exported together by nrioTool:
+
+```sh
+python3 inspect_boot.py main.bin spare.bin --backup-info backup.info
+```
+
+It checks both file lengths and CRCs, reports the NAND geometry, and prints the first entry in the primary table. Integrity checks establish that the files match their manifest. Compatibility with a target still depends on the live cart checks.
+
+Apache Thunder's newer DS Linker capture reports NAND ID `0x2555D5EC` and 128 pages per erase block. Its spare file matches the manifest. The main file reports CRC `0x434599A9` while the manifest records `0x6A252382`. The supplied main file's primary table starts at `0x80000`, outside the captured block. The sector at `0x80000` saved inside the manifest has a compact ROM header with a declared size of `0xF1C40`, whereas the separately supplied stock safe-mode ROM declares `0x14E40`. The files therefore cannot establish where that stock safe-mode ROM is currently mapped on this cart or serve as a verified block-0 recovery image.
+
+The newer stock and patched safe-mode files are both `0x1C000` bytes, with erased padding after the declared size. The patch changes only the ROM header and the ARM7 sector at `0x14200`. nrioTool accepts the padding while checking the used ROM against the live mapping. The files passed the ARM9 backend's preparation and verified rewrite in emulation using a constructed matching map. The test does not establish compatibility with the cart's current map.
+
+### ECC and the original uDisk package
+
+Recomputing the existing NRIO ECC over the supplied DS Linker main file does not reproduce its first six spare records. Those records carry boot data, including ARM7 copies, and their corresponding main file also fails the manifest check. The earlier ExpressCard repair restored boot by putting back ARM7 spare bytes that an ECC rewrite had overwritten. Those results support preserving the boot records separately from generating ECC for ordinary NAND pages.
+
+The archived N-Card package contains `udisk.nds`, `xmenu.dat`, the host USB utility and DLLs, and a batch file invoking `USBNDS.exe udisk.nds 2 1`. The `xmenu.dat` image embeds a copy of the 19,724-byte NRIO driver at `0xD26FC`. It differs from this repository's reference in one byte at driver offset `0x64`, where it advertises read-only access. The archive's XMenu NitroFS root contains `c_file.bmp`, `desktop.bmp`, `global.ini`, and `savetype.sdb`. XMenu also contains `DSYSTEM` strings. The updater's block-0 erase and spare programming logic still needs to be traced. [Archived N-Card package](https://linfoxdomain.com/nintendo/ds/dl/NCard_v1.45_v2.53_v25.zip)
+
+In the separate edited ExpressCard logical ROM, the header CRC matches (`0xA86B`). The stored secure-area CRC is `0x450D`, and calculating it over the captured bytes at `0x4000–0x7FFF` gives `0x9F6A`. That comparison uses the captured logical ROM bytes. It leaves open which bytes the card presented during secure boot.
+
 ### Save a DS session log
 
 The screen reports cart detection, NAND geometry, repair checks, the first USB read and write, progress at each additional 8 MiB, and failures with their LBA or NAND page. A USB NAND session ends with read, write, and error counts. Table repair reports which checks passed or where it stopped.
