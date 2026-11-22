@@ -27,6 +27,14 @@ The older single-mode binaries used in the hardware reports are available in the
 
 On a DSi with usable internal SD access, the [nrioTool integration](../nrioTool/) adds SD backup and install options for the safe-mode ROM and first banner page.
 
+### Fully erased block 0 without a backup
+
+An on-device reference-image recovery could avoid needing a donor cart during the repair. It would require a verified reference for the particular hardware revision, including raw block-0 main **and** packed spare data, and a way to identify a compatible target from data outside the erased block. The target's NAND bridge must still respond when the tool runs from DSi SD.
+
+The Fire Line and DS Linker samples have the same first sector of the secondary table at `0x40000`, but different early boot headers and spare records. Both also use the same observed NAND ID. Those observations do not identify a compatible replacement on their own. No exact copies of the shared spare records were found in the surviving main data from `0x40000–0x7FFFF` in either sample. Those captures end before `0x80000` and do not cover later main NAND or spare records beyond block 0.
+
+The archive has a Fire Line early main-area dump and an ExpressCard logical ROM containing an intact ARM7 copy. The samples examined do not supply a complete raw block-0 spare capture. The archived ExpressCard disk image begins with the `DSGBAFLS` filesystem signature. It supplies filesystem data rather than physical boot pages. A reference restore still needs a matching raw capture and an on-device test on another cart of the same verified revision. [Fire Line archive](https://github.com/m4x10187/fire-card-archive/tree/main/DS%20Fire%20Link/Dumps/8GBit) · [ExpressCard archive](https://github.com/m4x10187/fire-card-archive/tree/main/ExpressCard/Dumps)
+
 ### Save a DS session log
 
 The screen reports cart detection, NAND geometry, repair checks, the first USB read and write, progress at each additional 8 MiB, and failures with their LBA or NAND page. A USB NAND session ends with read, write, and error counts. Table repair reports which checks passed or where it stopped.
