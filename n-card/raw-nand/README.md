@@ -128,6 +128,10 @@ Apache reports an ARM7 payload of `0x38` bytes in the safe-mode ROM and `0x40` b
 
 Apache's approach stages the safe-mode ARM7 stub and payload in main RAM. The stub copies the payload to the original ARM7 destination before jumping to the original entry point. The standard DS header has separate ARM7 entry, load address, and size fields. [GBATEK DS cartridge header](https://problemkaputt.de/gbatek-ds-cartridge-header.htm)
 
+Apache supplied the tested `safe.nds` for main NAND offset `0x20000`. It is `0x14E40` bytes long and, if mapped contiguously, occupies `0x20000–0x34E3F`. That range lies within erase block 0 on the tested cart, which reported 128 pages per erase block. The ROM header stages `0x200` bytes of ARM7 code and data at `0x02380000`. Disassembly and emulation of the supplied stub confirmed that it copies `0x38` bytes to `0x03800000`, leaves the next eight bytes unchanged, and jumps to the copied code. That code waits for `0x1918027E` at `0x027FFE60` and then loads its jump target from `0x027FFE34`. This identifies a handoff in main RAM. The suspected overwrite in ARM7 WRAM remains unverified.
+
+This approach keeps the primary table pointing to safe mode so the stock uDisk path can remain in place. It does not require installing XuluMenu. The supplied USB logs for NAND ID `2514d3ec` report 1,024 main sectors written (512 KiB total) and one packed spare sector written, both sessions with zero write errors. The logs record transfer counts. Verifying which bytes changed and whether the original uDisk data was preserved requires before-and-after NAND dumps.
+
 Use the [offline patcher](patch_safe_mode.py) with the original, extracted safe-mode `.nds` and a confirmed free staging address in main RAM. Replace `STAGING_ADDRESS` with that address in hexadecimal.
 
 ```sh
