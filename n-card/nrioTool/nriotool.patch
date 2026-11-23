@@ -49,15 +49,43 @@ index 6cfb70f..d6bf80a 100644
 @@ -29,0 +30 @@ void runLaunchEngine (int language, u32 fileCluster, bool allowSD);
 +bool runLaunchEngineFromMemory(const void *rom, u32 size);
 diff --git a/arm9/source/main.cpp b/arm9/source/main.cpp
-index 3d1a9e7..ead3e39 100644
+index 3d1a9e7..d13cf0f 100644
 --- a/arm9/source/main.cpp
 +++ b/arm9/source/main.cpp
-@@ -22,0 +23,2 @@
+@@ -22,0 +23,3 @@
++#include "srl-dump.h"
 +extern "C" const u8 usb_mount_bin[] __attribute__((weak));
 +extern "C" const u8 usb_mount_bin_end[] __attribute__((weak));
-@@ -82 +83,0 @@ DTCM_DATA volatile int BlockTableSize = 0;
+@@ -30,2 +32,0 @@
+-#define STAGE2_HEADER 0x02000200
+-#define UDISK_HEADER 0x02000400
+@@ -50,2 +50,0 @@
+-// #define STAGE2OFFSET (u32)0x00020000
+-// #define UDISKROMOFFSET (u32)0x00080000
+@@ -64,2 +62,0 @@ tDSiHeader* cartHeader = (tDSiHeader*)DSI_HEADER;
+-tNDSHeader* stage2Header = (tNDSHeader*)STAGE2_HEADER;
+-tNDSHeader* uDiskHeader = (tNDSHeader*)UDISK_HEADER;
+@@ -68 +64,0 @@ DTCM_DATA ALIGN(4) u8 ReadBuffer[SECTOR_SIZE];
+-DTCM_DATA ALIGN(4) u32 ReadBuffer32[128];
+@@ -71,2 +66,0 @@ DTCM_DATA ALIGN(4) u8 FATBuffer[2048];
+-ALIGN(4) u32 BlockTableBuffer[0x4000];
+-ALIGN(4) u32 NandBlockBuffer[0x1000]; // Each block is eqilivent to 32 sectors (when a sector is 512 bytes in size)
+@@ -76 +69,0 @@ ALIGN(4) u32 NandBlockBuffer[0x1000]; // Each block is eqilivent to 32 sectors (
+-const u32 STAGE2BLOCKTABLE = 0x8000;
+@@ -78,3 +70,0 @@ const u32 STAGE2BLOCKTABLE = 0x8000;
+-DTCM_DATA volatile u32 UDISKBLOCKTABLE = 0x40000;
+-DTCM_DATA volatile u32 STAGE2OFFSET = 0x00020000;
+-DTCM_DATA volatile u32 UDISKROMOFFSET = 0x00080000;
+@@ -82 +71,0 @@ DTCM_DATA volatile int BlockTableSize = 0;
 -DTCM_DATA volatile int MenuID = 0;
-@@ -198,0 +200,7 @@ void CardInit(bool Silent = true, bool SkipSlotReset = false) {
+@@ -97,2 +85,0 @@ DTCM_DATA volatile bool WarningPosted = false;
+-DTCM_DATA volatile bool isBootleg = false;
+-DTCM_DATA volatile bool isCustom = false;
+@@ -103,0 +91,3 @@ DTCM_DATA char gameTitle[13] = {0};
++static nrio_srl_layout srlLayout;
++static bool rawNandAvailable;
++
+@@ -198,0 +189,7 @@ void CardInit(bool Silent = true, bool SkipSlotReset = false) {
 +static const DISC_INTERFACE *GetSlot2Storage() {
 +	const DISC_INTERFACE *storage = dldiGetInternal();
 +	const u32 required = FEATURE_SLOT_GBA | FEATURE_MEDIUM_CANREAD | FEATURE_MEDIUM_CANWRITE;
@@ -65,7 +93,7 @@ index 3d1a9e7..ead3e39 100644
 +	return storage && (storage->features & mask) == required ? storage : nullptr;
 +}
 +
-@@ -215,2 +223,9 @@ void MountFATDevices(bool mountSD = true) {
+@@ -215,2 +212,9 @@ void MountFATDevices(bool mountSD = true) {
 -		// if (!fatMounted)fatMounted = fatMountSimple("nrio", &io_nrio_);
 -		if (!fatMounted)fatMounted = fatInitDefault();
 +		if (!fatMounted) {
@@ -77,14 +105,359 @@ index 3d1a9e7..ead3e39 100644
 +				fatMounted = fatInitDefault();
 +			}
 +		}
-@@ -542,0 +558 @@ void DoImageRestore() {
+@@ -542,0 +547 @@ void DoImageRestore() {
 +	puts("Back up this cart before writes\nwhenever possible.\n");
-@@ -624,0 +641 @@ void DoSector0Restore() {
+@@ -624,0 +630 @@ void DoSector0Restore() {
 +	puts("Back up this cart before writes\nwhenever possible.\n");
-@@ -698 +715 @@ void DoTestDump() {
+@@ -680,0 +687 @@ void DoTestDump() {
++	InitCartNandReadMode(*(u32*)(DSI_HEADER + 0x08));
+@@ -698 +705 @@ void DoTestDump() {
 -	printf("Press [A] to return to main menu\n\n");
 +	printf("Press [A] to return to menu\n\n");
-@@ -1042,14 +1059,71 @@ void DoUdiskDump() {
+@@ -711,43 +718,5 @@ void DoTestDump() {
+-void DoStage1Dump() {
+-	consoleClear();
+-	DoWait(60);
+-	printf("About to dump stage1 data...\n\n");
+-	printf("Press [A] to continue.\n\n");
+-	printf("Press [B] to abort.\n");
+-	while(1) {
+-		swiWaitForVBlank();
+-		scanKeys();
+-		if(keysDown() & KEY_A)break;
+-		if(keysDown() & KEY_B)return;
+-	}
+-	if ((wasDSi && !sdMounted) || (!wasDSi && !fatMounted)) {
+-		MountFATDevices(wasDSi);
+-		if ((wasDSi && !sdMounted) || (!wasDSi && !fatMounted)) { DoFATerror(true, wasDSi); return; }
+-	}
+-	FILE *dest;
+-	if (sdMounted) { dest = fopen("sd:/nrioFiles/stage1.bin", "wb"); } else { dest = fopen("fat:/nrioFiles/stage1.bin", "wb"); }
+-	ProgressTracker = STAGE1SECTORCOUNT;
+-	textBuffer = "Dumping stage1 rom to file.\n\nPlease Wait...\n\n\n";
+-	textProgressBuffer = "Sectors Remaining: ";
+-	UpdateProgressText = true;
+-	for (int i = 0; i < STAGE1SECTORCOUNT; i++){
+-		nrio_readSector(ReadBuffer, (u32)(i * 0x200) + STAGE1OFFSET);
+-		fwrite(ReadBuffer, 0x200, 1, dest); // Used Region
+-		ProgressTracker--;
+-		UpdateProgressText = true;
+-	}
+-	fclose(dest);
+-	while(UpdateProgressText)swiWaitForVBlank();
+-	consoleClear();
+-	printf("Stage1 dump finished!\n\n");
+-	printf("Press [A] to return to main menu\n\n");
+-	printf("Press [B] to exit\n");
+-	while(1) {
+-		swiWaitForVBlank();
+-		scanKeys();
+-		if(keysDown() & KEY_A) return;
+-		if(keysDown() & KEY_B) { 
+-			ErrorState = true;
+-			return;
+-		}
+-	}
++static void RefreshSrlLayout() {
++	nrio_raw_info info;
++	rawNandAvailable = nrio_srl_open(&info);
++	srlLayout = rawNandAvailable ? nrio_srl_detect(info.sectors) : nrio_srl_layout{};
++	nrio_recovery_shutdown();
+@@ -756,74 +725,3 @@ void DoStage1Dump() {
+-void DoStage2Dump() {
+-	consoleClear();
+-	DoWait(60);
+-	if (isBootleg) {
+-		printf("About to dump bootleg SRL...\n\n");
+-	} else {
+-		printf("About to dump stage2 SRL...\n\n");
+-	}
+-	printf("Press [A] to continue.\n\n");
+-	printf("Press [B] to abort.\n");
+-	while(1) {
+-		swiWaitForVBlank();
+-		scanKeys();
+-		if(keysDown() & KEY_A)break;
+-		if(keysDown() & KEY_B)return;
+-	}
+-	if ((wasDSi && !sdMounted) || (!wasDSi && !fatMounted)) {
+-		MountFATDevices(wasDSi);
+-		if ((wasDSi && !sdMounted) || (!wasDSi && !fatMounted)) { DoFATerror(true, wasDSi); return; }
+-	}
+-	toncset32((void*)BlockTableBuffer, 0xFFFFFFFF, 0xFA0);
+-	toncset((void*)NandBlockBuffer, 0xFF, 0x4000);
+-	
+-	// int Sectors;
+-	int Blocks = 1;
+-	int BadBlocks = 0;
+-	bool hasValidRomsize = false;
+-	
+-	nrio_readSector((void*)STAGE2_HEADER, STAGE2OFFSET);
+-	
+-	// 0x10000000 is the max possible rom size block table can setup
+-	if ((stage2Header->romSize > 0) && (stage2Header->romSize <= 0x10000000))hasValidRomsize = true;
+-	
+-	for (int i = 0; i < 128; i++)nrio_readSector(((u32*)BlockTableBuffer + (i * 128)), (STAGE2BLOCKTABLE + (i * 0x200)));
+-	u32 FirstBlock = BlockTableBuffer[0];
+-	u32 CurrentBlock = FirstBlock;
+-		
+-	for (int i = 1; i < 4000; i++) {
+-		if ((BlockTableBuffer[i] < 0x20000) || (BlockTableBuffer[i] == 0xFFFFFFFF) || (BlockTableBuffer[i] < CurrentBlock) || (BlockTableBuffer[i] > 0x80000000))break;
+-		if ((BlockTableBuffer[i - 1] + 0x4000) != BlockTableBuffer[i])BadBlocks++;
+-		if (hasValidRomsize && ((BlockTableBuffer[i] - BlockTableBuffer[0]) > (stage2Header->romSize + 0x4000)))break;
+-		CurrentBlock = BlockTableBuffer[i];
+-		Blocks++;
+-	}
+-	/*DoWait(2);
+-	if ((stage2Header->romSize > 0) && (stage2Header->romSize <= 0x10000000)) { // 0x10000000 is the max possible rom size block table can setup
+-		Sectors = (int)(stage2Header->romSize / 0x200) + 2; // Add one sector to avoid underdump if size is not a multiple of 128 words
+-	} else {
+-		Sectors = 20000;
+-	}*/
+-	FILE *dest;
+-	if (isBootleg) {
+-		if (sdMounted) { dest = fopen("sd:/nrioFiles/bootleg.nds", "wb"); } else { dest = fopen("fat:/nrioFiles/bootleg.nds", "wb"); }
+-	} else {
+-		if (sdMounted) { dest = fopen("sd:/nrioFiles/stage2.nds", "wb"); } else { dest = fopen("fat:/nrioFiles/stage2.nds", "wb"); }
+-	}
+-	
+-	if (!dest) { DoError("ERROR: Failed to create file!"); return; }
+-	ProgressTracker = Blocks;
+-	if (isBootleg) { 
+-		textBuffer = "Dumping to bootleg.nds...\nPlease Wait...\n\n\n";
+-	} else {
+-		textBuffer = "Dumping to stage2.nds...\nPlease Wait...\n\n\n";
+-	}
+-	// textProgressBuffer = "Sectors Remaining: ";
+-	textProgressBuffer = "Blocks Remaining: ";
+-	for (int i = 0; i < Blocks; i++) {
+-		for (int I = 0; I < 32; I++) {
+-			nrio_readSector(((u32*)NandBlockBuffer + (I * 128)), (BlockTableBuffer[i] + (I * 0x200)));
+-		}
+-		fwrite((u8*)NandBlockBuffer, 0x4000, 1, dest);
+-		ProgressTracker--;
+-		UpdateProgressText = true;
+-	}
++static void DoSrlDump(const char *name, u32 table = 0) {
++	static u32 addresses[NRIO_SRL_MAP_ENTRIES];
++	alignas(4) static u8 buffer[NRIO_SRL_MAP_BLOCK];
+@@ -831,7 +728,0 @@ void DoStage2Dump() {
+-	/* for (int i = 0; i < Sectors; i++) {
+-		nrio_readSector(ReadBuffer, (u32)(i * 0x200) + STAGE2OFFSET);
+-		fwrite((u8*)ReadBuffer, 0x200, 1, dest);
+-		ProgressTracker--;
+-		UpdateProgressText = true;
+-	}*/
+-	fclose(dest);
+@@ -839,7 +730,3 @@ void DoStage2Dump() {
+-	printf("Dump finished!\n");
+-	if (BadBlocks > 0) {
+-		iprintf("%d blocks were reassigned\nin this section's block table.\n", BadBlocks);
+-	}
+-	printf("\nPress [A] to return to main menu\n\n");
+-	printf("Press [B] to exit\n");
+-	while(1) {
++	printf("Dump %s?\n\n", name);
++	puts("A Continue  B Back");
++	for (;;) {
+@@ -848,17 +735,36 @@ void DoStage2Dump() {
+-		if(keysDown() & KEY_A) return;
+-		if(keysDown() & KEY_B) { 
+-			ErrorState = true;
+-			return;
+-		}
+-	}
+-}
+-
+-
+-void DoUdiskDump() {
+-	consoleClear();
+-	DoWait(60);	
+-	printf("About to dump uDisk SRL...\n\n");
+-	printf("Press [A] to continue.\n\n");
+-	printf("Press [B] to abort.\n");
+-	while(1) {
+-		swiWaitForVBlank();
++		const u32 keys = keysDown();
++		if (keys & KEY_B) return;
++		if (keys & KEY_A) break;
++	}
++
++	const char *root = wasDSi ? "sd:/nrioFiles" : "fat:/nrioFiles";
++	char path[48], temporary[48];
++	snprintf(path, sizeof(path), "%s/%s", root, name);
++	snprintf(temporary, sizeof(temporary), "%s/%s.part", root, name);
++	if (access(path, F_OK) == 0 || access(temporary, F_OK) == 0) {
++		DoError("Move the existing dump or .part\nfile before dumping again.", false);
++		return;
++	}
++
++	nrio_raw_info info;
++	if (!nrio_srl_open(&info)) {
++		DoError("Could not probe Slot-1 NAND.", false);
++		return;
++	}
++	u32 blocks = 1;
++	if (table && !nrio_srl_plan(table, info.sectors, addresses, &blocks)) {
++		nrio_recovery_shutdown();
++		DoError("Invalid or unreadable SRL map.", false);
++		return;
++	}
++
++	FILE *dest = fopen(temporary, "wb");
++	if (!dest) {
++		nrio_recovery_shutdown();
++		DoError("Could not create the dump file.", false);
++		return;
++	}
++	const u32 sectors = table ? NRIO_SRL_MAP_BLOCK / SECTOR_SIZE : STAGE1SECTORCOUNT;
++	bool ok = true;
++	bool cancelled = false;
++	for (u32 i = 0; i < blocks; ++i) {
+@@ -866,42 +772,3 @@ void DoUdiskDump() {
+-		if(keysDown() & KEY_A)break;
+-		if(keysDown() & KEY_B)return;
+-	}
+-	if ((wasDSi && !sdMounted) || (!wasDSi && !fatMounted)) {
+-		MountFATDevices(wasDSi);
+-		if ((wasDSi && !sdMounted) || (!wasDSi && !fatMounted)) { DoFATerror(true, wasDSi); return; }
+-	}
+-	toncset32((void*)BlockTableBuffer, 0xFFFFFFFF, 0xFA0);
+-	toncset((void*)NandBlockBuffer, 0xFF, 0x4000);
+-	
+-	int Blocks = 1;
+-	int BadBlocks = 0;
+-	bool hasValidRomsize = false;
+-	
+-	nrio_readSector((void*)UDISK_HEADER, UDISKROMOFFSET);
+-	
+-	// 0x10000000 is the max possible rom size block table can setup
+-	if ((uDiskHeader->romSize > 0) && (uDiskHeader->romSize <= 0x10000000))hasValidRomsize = true;
+-	
+-	for (int i = 0; i < 128; i++) {
+-		nrio_readSector(((u32*)BlockTableBuffer + (i * 128)), (UDISKBLOCKTABLE + (i * 0x200)));
+-	}
+-	
+-	u32 FirstBlock = BlockTableBuffer[0];
+-	u32 CurrentBlock = FirstBlock;
+-		
+-	for (int i = 1; i < 4000; i++) {
+-		if ((BlockTableBuffer[i] < 0x20000) || (BlockTableBuffer[i] == 0xFFFFFFFF) || (BlockTableBuffer[i] < CurrentBlock) || (BlockTableBuffer[i] > 0x80000000))break;
+-		if ((BlockTableBuffer[i - 1] + 0x4000) != BlockTableBuffer[i])BadBlocks++;
+-		if (hasValidRomsize && ((BlockTableBuffer[i] - BlockTableBuffer[0]) > uDiskHeader->romSize))break;
+-		CurrentBlock = BlockTableBuffer[i];
+-		Blocks++;
+-	}
+-	FILE *dest;
+-	if (sdMounted) { dest = fopen("sd:/nrioFiles/udisk.nds", "wb"); } else { dest = fopen("fat:/nrioFiles/udisk.nds", "wb"); }
+-	if (!dest) { DoError("ERROR: Failed to create file!"); return; }
+-	ProgressTracker = Blocks;
+-	textBuffer = "Dumping to udisk.nds...\nPlease Wait...\n\n\n";
+-	textProgressBuffer = "Blocks Remaining: ";
+-	for (int i = 0; i < Blocks; i++) {
+-		for (int I = 0; I < 32; I++) {
+-			nrio_readSector(((u32*)NandBlockBuffer + (I * 128)), (BlockTableBuffer[i] + (I * 0x200)));
++		if (keysDown() & KEY_B) {
++			cancelled = true;
++			break;
+@@ -909,19 +776,4 @@ void DoUdiskDump() {
+-		fwrite((u8*)NandBlockBuffer, 0x4000, 1, dest);
+-		ProgressTracker--;
+-		UpdateProgressText = true;
+-	}
+-	fclose(dest);
+-	consoleClear();
+-	printf("Dump finished!\n");
+-	if (BadBlocks > 0) {
+-		iprintf("%d blocks were reassigned\nin this section's block table.\n", BadBlocks);
+-	}
+-	printf("\nPress [A] to return to main menu\n\n");
+-	printf("Press [B] to exit\n");
+-	while(1) {
+-		swiWaitForVBlank();
+-		scanKeys();
+-		if(keysDown() & KEY_A) return;
+-		if(keysDown() & KEY_B) { 
+-			ErrorState = true;
+-			return;
++		if (i % 32 == 0 || i + 1 == blocks) {
++			consoleClear();
++			printf("Dumping %s\nBlock %lu of %lu\n\nB Cancel",
++			       name, (unsigned long)i + 1, (unsigned long)blocks);
+@@ -929,19 +781,5 @@ void DoUdiskDump() {
+-	}
+-}
+-
+-
+-/*void DoUdiskDump() {
+-	consoleClear();
+-	DoWait(60);
+-	printf("About to dump uDisk...\n\n");
+-	printf("Press [A] to continue.\n\n");
+-	printf("Press [B] to abort.\n");
+-	while(1) {
+-		swiWaitForVBlank();
+-		scanKeys();
+-		if(keysDown() & KEY_A)break;
+-		if(keysDown() & KEY_B)return;
+-	}
+-	if ((wasDSi && !sdMounted) || (!wasDSi && !fatMounted)) {
+-		MountFATDevices(wasDSi);
+-		if ((wasDSi && !sdMounted) || (!wasDSi && !fatMounted)) { DoFATerror(true, wasDSi); return; }
++		const u32 address = table ? addresses[i] : STAGE1OFFSET;
++		const size_t bytes = sectors * SECTOR_SIZE;
++		ok = nrio_recovery_read(address / SECTOR_SIZE, sectors, buffer) &&
++		     fwrite(buffer, 1, bytes, dest) == bytes;
++		if (!ok) break;
+@@ -950,19 +788,7 @@ void DoUdiskDump() {
+-	int Sectors;
+-	nrio_readSector((void*)UDISK_HEADER, UDISKROMOFFSET);
+-	DoWait(2);
+-	if ((uDiskHeader->romSize > 0) && (uDiskHeader->romSize <= 0x10000000)) {
+-		Sectors = (int)(uDiskHeader->romSize / 0x200) + 1; // Add one sector to avoid underdump if size is not a multiple of 128 words
+-	} else {
+-		Sectors = 20000;
+-	}
+-	FILE *dest;
+-	if (sdMounted) { dest = fopen("sd:/nrioFiles/udisk.nds", "wb"); } else { dest = fopen("fat:/nrioFiles/udisk.nds", "wb"); }
+-	if (!dest) { DoError("ERROR: Failed to create file!"); return; }
+-	ProgressTracker = Sectors;
+-	textBuffer = "Dumping to udisk.nds...\nPlease Wait...\n\n\n";
+-	textProgressBuffer = "Sectors Remaining: ";
+-	for (int i = 0; i < Sectors; i++){
+-		nrio_readSector(ReadBuffer, (u32)(i * 0x200) + UDISKROMOFFSET);
+-		fwrite(ReadBuffer, 0x200, 1, dest);
+-		ProgressTracker--;
+-		UpdateProgressText = true;
++	if (fclose(dest)) ok = false;
++	nrio_recovery_shutdown();
++	if (ok && !cancelled) ok = rename(temporary, path) == 0;
++	if (!ok || cancelled) {
++		remove(temporary);
++		if (!cancelled) DoError("Could not read or save the SRL.", false);
++		return;
+@@ -970 +795,0 @@ void DoUdiskDump() {
+-	fclose(dest);
+@@ -972,4 +797,2 @@ void DoUdiskDump() {
+-	iprintf("Dump finished!\n\n");
+-	iprintf("Press [A] to return to main menu\n\n");
+-	iprintf("Press [B] to exit\n");
+-	while(1) {
++	printf("Saved %s\n\nA Back", name);
++	do {
+@@ -978,7 +801,2 @@ void DoUdiskDump() {
+-		if(keysDown() & KEY_A) return;
+-		if(keysDown() & KEY_B) { 
+-			ErrorState = true;
+-			return;
+-		}
+-	}
+-}*/
++	} while (!(keysDown() & (KEY_A | KEY_B)));
++}
+@@ -1007 +824,0 @@ void DoUdiskDump() {
+-	// nrio_readSector((void*)STAGE2_HEADER, 0);
+@@ -1042,14 +859,71 @@ void DoUdiskDump() {
 -int UtilityMenu() {
 -	if(!WarningPosted)LoadTopScreenUtilitySplash();
 -	int value = -1;
@@ -170,7 +543,7 @@ index 3d1a9e7..ead3e39 100644
 +			redraw = false;
 +		}
 +
-@@ -1058,5 +1132,11 @@ int UtilityMenu() {
+@@ -1058,5 +932,11 @@ int UtilityMenu() {
 -		switch (keysDown()){
 -			case KEY_A: 	{ if (wasDSi)value = 0; } break;
 -			case KEY_X:		{ value = 1; } break;
@@ -187,9 +560,9 @@ index 3d1a9e7..ead3e39 100644
 +			redraw = true;
 +		} else if (keys & KEY_A) {
 +			return visible[selected]->action;
-@@ -1065 +1144,0 @@ int UtilityMenu() {
+@@ -1065 +944,0 @@ int UtilityMenu() {
 -	return value;
-@@ -1067,0 +1147,60 @@ int UtilityMenu() {
+@@ -1067,0 +947,60 @@ int UtilityMenu() {
 +static void RunRecoveryAction(int action, const char *startupRecoveryRoot) {
 +	if (startupRecoveryRoot) nrioTool_sd_recovery(action, startupRecoveryRoot);
 +	else DoStorageRecovery(action);
@@ -250,11 +623,11 @@ index 3d1a9e7..ead3e39 100644
 +	if (access(root, F_OK) != 0) mkdir(root, 0777);
 +	RunUtilityMenu(root);
 +}
-@@ -1069,2 +1208 @@ int UtilityMenu() {
+@@ -1069,2 +1008 @@ int UtilityMenu() {
 -int DLDIMenu() {
 -	int value = -1;
 +static void RunDldiMenu() {
-@@ -1073,5 +1211,4 @@ int DLDIMenu() {
+@@ -1073,5 +1011,4 @@ int DLDIMenu() {
 -		printf("WARNING! Leaving DLDI menu will\nrequire restart!\n");
 -		printf("Do you wish to continue?\n\n");
 -		printf("\nPress [A] to continue\n");
@@ -264,20 +637,20 @@ index 3d1a9e7..ead3e39 100644
 +		puts("the DLDI Menu.\n");
 +		puts("A Continue  B Back");
 +		for (;;) {
-@@ -1080,2 +1217,3 @@ int DLDIMenu() {
+@@ -1080,2 +1017,3 @@ int DLDIMenu() {
 -			if(keysDown() & KEY_A)break;
 -			if(keysDown() & KEY_B) { value = 6; break; }
 +			const u32 keys = keysDown();
 +			if (keys & KEY_B) return;
 +			if (keys & KEY_A) break;
-@@ -1083,2 +1221 @@ int DLDIMenu() {
+@@ -1083,2 +1021 @@ int DLDIMenu() {
 -		consoleClear();
 -		if (value == 6) { return value; } else { dldiWarned = true; }
 +		dldiWarned = true;
-@@ -1086 +1223 @@ int DLDIMenu() {
+@@ -1086 +1023 @@ int DLDIMenu() {
 -	if (WarningPosted)consoleClearTop(false);
 +	if (WarningPosted) consoleClearTop(false);
-@@ -1095,2 +1232,5 @@ int DLDIMenu() {
+@@ -1095,2 +1032,5 @@ int DLDIMenu() {
 -		if (!nrioDLDIMounted) { DoError("DLDI Init Failed!\n"); return 4; }
 -		if (!uDiskFileFound)uDiskFileFound = (access("sd:/nrioFiles/xBootStrap.nds", F_OK) == 0);
 +		if (!nrioDLDIMounted) {
@@ -285,9 +658,9 @@ index 3d1a9e7..ead3e39 100644
 +			return;
 +		}
 +		if (!uDiskFileFound) uDiskFileFound = (access("sd:/nrioFiles/xBootStrap.nds", F_OK) == 0);
-@@ -1098 +1237,0 @@ int DLDIMenu() {
+@@ -1098 +1037,0 @@ int DLDIMenu() {
 -	consoleClear();
-@@ -1100,21 +1239 @@ int DLDIMenu() {
+@@ -1100,21 +1039 @@ int DLDIMenu() {
 -	if ((cartSize == 0) && statvfs("fat:/", &st) == 0)cartSize = (st.f_bsize * st.f_blocks) / 1024;
 -	printf("Press [A] to boot cart menu\n");
 -	printf("\nPress [X] to dump sector 0\n");
@@ -310,7 +683,7 @@ index 3d1a9e7..ead3e39 100644
 -	return value;
 -}
 +	if (!cartSize && statvfs("fat:/", &st) == 0) cartSize = (st.f_bsize * st.f_blocks) / 1024;
-@@ -1122,11 +1241,15 @@ int DLDIMenu() {
+@@ -1122,11 +1041,15 @@ int DLDIMenu() {
 -int MainMenu() {
 -	int value = -1;
 -	consoleClear();
@@ -337,9 +710,9 @@ index 3d1a9e7..ead3e39 100644
 +			case MenuAction::RestoreFatSector: DoSector0Restore(); break;
 +			case MenuAction::WriteFatImage: DoImageRestore(); break;
 +			default: ErrorState = true; break;
-@@ -1134 +1256,0 @@ int MainMenu() {
+@@ -1134 +1056,0 @@ int MainMenu() {
 -		printf("\nPress [Y] to dump UDISK SRL\n");
-@@ -1136,25 +1257,0 @@ int MainMenu() {
+@@ -1136,25 +1057,0 @@ int MainMenu() {
 -	if (wasDSi)printf("\nPress [X] go to DLDI menu\n");
 -	printf("\nPress [DPAD LEFT] dump main SRL\n");
 -	printf("\nPress [DPAD RIGHT] to do test\ndump\n");
@@ -365,28 +738,28 @@ index 3d1a9e7..ead3e39 100644
 -		}
 -	}
 -	return value;
-@@ -1162,0 +1260,11 @@ int MainMenu() {
+@@ -1162,0 +1060,11 @@ int MainMenu() {
 +static MenuAction MainMenu() {
 +	const MenuItem items[] = {
 +		{MenuAction::Utility, "Utility Menu"},
-+		{MenuAction::DumpMain, "Dump main SRL"},
-+		{MenuAction::DumpStage2, isBootleg ? "Dump bootleg SRL" : "Dump Stage2 SRL", !isCustom},
-+		{MenuAction::DumpUdisk, "Dump uDisk SRL", !isBootleg},
++		{MenuAction::DumpMain, "Dump main SRL", rawNandAvailable},
++		{MenuAction::DumpStage2, srlLayout.bootleg ? "Dump bootleg SRL" : "Dump Stage2 SRL", srlLayout.stage2_table != 0},
++		{MenuAction::DumpUdisk, "Dump uDisk SRL", srlLayout.udisk_table != 0},
 +		{MenuAction::Dldi, "DLDI Menu", wasDSi},
 +		{MenuAction::BootCart, "Boot cart menu", wasDSi},
 +	};
 +	return PickAction("Main Menu", items, true);
 +}
-@@ -1188,0 +1297,2 @@ int main() {
+@@ -1188,0 +1097,2 @@ int main() {
 +	const bool usbOnly = UsbMountAvailable() && (keysHeld() & KEY_X);
 +	bool recoveryOnly = (keysHeld() & KEY_L) != 0;
-@@ -1191,0 +1302,5 @@ int main() {
+@@ -1191,0 +1102,5 @@ int main() {
 +	if (usbOnly) {
 +		DoUsbMount();
 +		fifoSendValue32(FIFO_USER_03, 1);
 +		return 0;
 +	}
-@@ -1200,0 +1316,9 @@ int main() {
+@@ -1200,0 +1116,9 @@ int main() {
 +	if (recoveryOnly) {
 +		if (wasDSi || GetSlot2Storage()) MountFATDevices();
 +		if (const char *root = RecoveryStorageRoot()) RunStorageRecoveryMenu(root);
@@ -396,7 +769,53 @@ index 3d1a9e7..ead3e39 100644
 +		fifoSendValue32(FIFO_USER_03, 1);
 +		return 0;
 +	}
-@@ -1266,51 +1390,11 @@ int main() {
+@@ -1211,22 +1135,4 @@ int main() {
+-	if (memcmp(cartHeader->ndshdr.gameCode, "DSGB", 4)) {
+-		if(!WarningPosted)LoadTopScreenDebugSplash();
+-		WarningPosted = true;
+-		consoleClear();
+-		PrintToTop("WARNING! The cart in slot 1\ndoesn't appear to be an\nN-Card or one of it's clones!\n\n", -1, false);
+-		
+-	}
+-	if (*(u32*)(INITBUFFER) != 0x2991AE1D) {
+-		if(!WarningPosted)LoadTopScreenDebugSplash();
+-		consoleClear();
+-		/*FILE *initFile = fopen("sd:/nrioFiles/nrio_InitLog.bin", "wb");
+-		if (initFile) {
+-			fwrite((u32*)INITBUFFER, 0x200, 1, initFile); // Used Region
+-			fclose(initFile);
+-		}
+-		toncset((void*)0x02000000, 0, 0x800);*/
+-		PrintToTop("WARNING! Cart returned\nunexpected response from init\ncommand!\n\n", -1, false);
+-		PrintToTop("Command response debug:\n\n", -1, false);
+-		PrintToTop("%08x\n", *(u32*)0x02000010, false);
+-		PrintToTop("%08x\n", *(u32*)0x02000020, false);
+-		PrintToTop("%08x\n", *(u32*)0x02000030, false);
+-		PrintToTop("%08x\n", *(u32*)0x02000040, false);
++	RefreshSrlLayout();
++	if (!rawNandAvailable) {
++		LoadTopScreenDebugSplash();
++		PrintToTop("Could not probe Slot-1 NAND.\n", -1, true);
+@@ -1241,18 +1146,0 @@ int main() {
+-	// Determin location of stage2 rom and set offset based on first block table entry for it in 0x8000 block table used by stage1.
+-	// "Bootleg" style N-Cards typically have block table setup to load stage2 from 0x40000 instead of 0x80000. (stage2 being the actual game rom in this instance)
+-	// This is not a gurantee so I've added code to handle reading first block table address and determining stage2 location from that.
+-	nrio_readSector(ReadBuffer32, STAGE2BLOCKTABLE);
+-	// Detect if bootleg style N-Card if the value is the expected value bootleg style N-Cards use. (mostly just for UI purposes)
+-	if (ReadBuffer32[0] > 0x7FFFF) { isCustom = true; } else if (ReadBuffer32[0] > 0x3FFFF) { isBootleg = true;	}
+-	STAGE2OFFSET = ReadBuffer32[0];
+-	
+-	// Determin location of udisk rom and set offset based on first block table entry.
+-	// Will use stage2 block table if stage2 block table was modified to use udisk section.
+-	if (isCustom) {
+-		nrio_readSector(ReadBuffer32, STAGE2BLOCKTABLE);
+-		UDISKBLOCKTABLE = STAGE2BLOCKTABLE;
+-	} else {
+-		nrio_readSector(ReadBuffer32, UDISKBLOCKTABLE);
+-	}
+-	UDISKROMOFFSET = ReadBuffer32[0];
+-
+@@ -1266,51 +1154,14 @@ int main() {
 -		switch (MenuID) {
 -			case 0: {
 -				switch (MainMenu()) {
@@ -451,12 +870,15 @@ index 3d1a9e7..ead3e39 100644
 +		switch (MainMenu()) {
 +			case MenuAction::Utility:
 +				RunUtilityMenu();
++				if (!ErrorState) RefreshSrlLayout();
 +				if (!WarningPosted) LoadTopScreenSplash();
 +				break;
 +			case MenuAction::Dldi: RunDldiMenu(); break;
-+			case MenuAction::DumpMain: DoStage1Dump(); break;
-+			case MenuAction::DumpStage2: DoStage2Dump(); break;
-+			case MenuAction::DumpUdisk: DoUdiskDump(); break;
++			case MenuAction::DumpMain: DoSrlDump("stage1.bin"); break;
++			case MenuAction::DumpStage2:
++				DoSrlDump(srlLayout.bootleg ? "bootleg.nds" : "stage2.nds", srlLayout.stage2_table);
++				break;
++			case MenuAction::DumpUdisk: DoSrlDump("udisk.nds", srlLayout.udisk_table); break;
 +			case MenuAction::BootCart: SetSCFG(); DoCartBoot(); break;
 +			default: ErrorState = true; break;
 diff --git a/bootloader/source/common.h b/bootloader/source/common.h

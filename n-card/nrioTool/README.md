@@ -4,6 +4,12 @@ This integration adds recovery options to Apache Thunder's nrioTool utility menu
 
 [Download the compiled nrioTool with the menu picker and USB mount](nrioTool.nds?raw=1).
 
+## Dump SRLs
+
+The Main Menu probes Slot-1 with the read-only NAND backend and lists the SRL dumps available for the detected layout. **Dump main SRL** saves the original 22-sector main area as `stage1.bin`. **Dump Stage2 SRL**, **Dump bootleg SRL**, and **Dump uDisk SRL** follow their NAND block tables into `stage2.nds`, `bootleg.nds`, or `udisk.nds`. The table reader recognizes a primary table redirected to uDisk and skips tables marked `QAFE`. Mapped dumps use 16 KiB blocks and retain the last block's padding. A credible ROM size limits the dump. Otherwise, the reader uses the valid prefix of the block table.
+
+Files go to `sd:/nrioFiles` on DSi or `fat:/nrioFiles` in DS mode. Move an existing dump before repeating it. Press **B** during a dump to cancel. A completed file appears only after the read and close succeed.
+
 ## Menu controls
 
 Use **Up/Down** to highlight a row, **A** to select it, and **B** to go back or exit. Choose **Utility Menu** from the Main Menu for cart checks, block-0 backups, and USB mounting or GodMode9Nrio where available. Choose **Advanced NAND tools** for boot-area writes, update conversion, and test dumps.
