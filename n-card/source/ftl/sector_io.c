@@ -8,7 +8,12 @@ NRIO_ROUTINE(30ec) void nrio_ftl_read(u32 offset, u32 buffer_address, u32 length
     nrio_new_sector_request = 1;
     nrio_sector_count = length >>= 9;
     nrio_current_sector = offset >>= 9;
+#ifdef NRIO_USB_MOUNT
+    if (nrio_current_sector >= nrio_sector_capacity ||
+        length > nrio_sector_capacity - nrio_current_sector) {
+#else
     if (offset + 1 > nrio_sector_capacity) {
+#endif
         return;
     }
 
@@ -22,9 +27,11 @@ NRIO_ROUTINE(30ec) void nrio_ftl_read(u32 offset, u32 buffer_address, u32 length
 
 NRIO_ROUTINE(4978) void nrio_ftl_write(u32 offset, const void *input, u32 length)
 {
+#ifndef NRIO_USB_MOUNT
     if (nrio_current_sector + 1 > nrio_sector_capacity) {
         return;
     }
+#endif
 
     nrio_cached_logical_page = 0xffffffff;
     u32 sector = offset >> 9;

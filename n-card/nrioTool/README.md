@@ -17,6 +17,12 @@ Launch `nrioTool.nds` from a Slot-2 storage device with its writable DLDI driver
 
 Hold **L** at launch to jump straight to recovery before the regular Slot-1 initialization. **SELECT** saves a block-0 backup from the N-Card in Slot-1. Recovery is available in DS mode when nrioTool mounts a read/write Slot-2 DLDI device. This avoids storing its backups on the Slot-1 cart being repaired. The Slot-2 path has been checked in software and still needs a physical DS or DS Lite test.
 
+## Mount the N-Card over USB
+
+Use a DS or DS Lite with the N-Card in Slot-1 and an N-Card USB writer in Slot-2. With the USB-enabled build of nrioTool, hold **X** at startup, or press **A** for **Mount USB Drive** in the DS Utility Menu. Connect the writer to your computer. The cart's existing FAT volume appears as a removable drive, ready for copying ROMs and other files in either direction.
+
+Eject the drive on the computer before pressing **START** on the DS to leave USB mode. The app requires a readable FAT volume and keeps raw NAND and recovery controls separate. The mount has been exercised with an emulated FAT volume. A physical DS and USB writer test is pending.
+
 ## Check the cart
 
 Press **START** in the Utility Menu. The read-only check reports the NAND ID, detected erase geometry, and the addresses and recognized ROM types selected by the primary and secondary boot tables. The report is appended to `nrioFiles/CHECK-CART.TXT`. Press **X** while viewing the report to select a saved block-0 backup and check its file lengths, CRCs, and cart anchors. A layout match identifies the header and mapped ARM7 pattern. It cannot predict bootability.
@@ -64,3 +70,14 @@ make -C nrioTool LIBNDS=/path/to/legacy-sdk/opt/devkitpro/libnds
 The build uses nrioTool's devkitARM Makefiles. Set `DEVKITPRO` and `DEVKITARM` and put the devkitPro tools on `PATH`. The local test build used devkitARM r67.1 with libnds 1.8.3 and libfat-nds 1.1.5 installed together in a separate SDK directory. nrioTool's ARM7 and bootloader use the pre-Calico FIFO and power-management APIs. [Archived libnds package](https://wii.leseratte10.de/devkitPro/libnds/libnds_1.8.3%20%282024-09-04%29/) · [Archived libfat package](https://wii.leseratte10.de/devkitPro/libfat/libfat_1.1.5%20%282020-04-18%29/)
 
 The Makefile produces `nrioTool.nds`. The integration adds no cart-specific NAND or spare data to the ROM.
+
+To include USB mounting, run the companion build after applying the integration and before building nrioTool. Use a clean checkout of the USB app at the pinned revision, a BlocksDS installation, and the devkitARM r20 SDK for the standalone filesystem DLDI.
+
+```sh
+git clone https://github.com/ApacheThunder/nrio-usb-disk.git
+git -C nrio-usb-disk checkout b9b781bf5deec5096cbc517432878430ac0e58c6
+DEVKITPRO=/path/to/r20-sdk sh n-card/nrioTool/usb-mount/build.sh nrio-usb-disk nrioTool
+make -C nrioTool LIBNDS=/path/to/legacy-sdk/opt/devkitpro/libnds
+```
+
+Keep `dlditool` on `PATH`. The companion build patches its USB checkout and stores the embedded ROM at `nrioTool/data/usb_mount.bin`. Use the regular nrioTool SDK for the final `make` command. [USB app source](https://github.com/ApacheThunder/nrio-usb-disk/tree/b9b781bf5deec5096cbc517432878430ac0e58c6)

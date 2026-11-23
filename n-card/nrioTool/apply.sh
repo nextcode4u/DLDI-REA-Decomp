@@ -23,3 +23,4 @@ done
 for file in updater.c updater.h payload.c; do
     cp "$integration/../udisk/$file" "$checkout/arm9/source/udisk/"
 done
+cp "$integration/usb-mount/ram-launch.h" "$checkout/bootloader/source/"

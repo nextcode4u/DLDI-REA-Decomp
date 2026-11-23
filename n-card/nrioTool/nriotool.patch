@@ -5,11 +5,57 @@ index c3250e7..9a9215f 100644
 @@ -19 +19 @@ BUILD    := build
 -SOURCES  := source source/common
 +SOURCES  := source source/common source/recovery_nand source/udisk
+diff --git a/arm9/source/launch_engine.c b/arm9/source/launch_engine.c
+index af7773c..4600ed0 100644
+--- a/arm9/source/launch_engine.c
++++ b/arm9/source/launch_engine.c
+@@ -24,0 +25 @@
++#include "../../bootloader/source/ram-launch.h"
+@@ -30 +31 @@
+-typedef struct sLauncherSettings { u32 cachedChipID; u16 language; u16 allowSD; unsigned long fileCluster; } tLauncherSettings;
++typedef struct sLauncherSettings { u32 cachedChipID; u16 language; u16 allowSD; unsigned long fileCluster; u32 ramImageSize; } tLauncherSettings;
+@@ -58 +59 @@ ITCM_CODE void setSCFG(bool allowSD) {
+-void runLaunchEngine (int language, u32 fileCluster, bool allowSD) {
++static void launchEngine(int language, u32 fileCluster, bool allowSD, u32 ramImageSize) {
+@@ -60 +61 @@ void runLaunchEngine (int language, u32 fileCluster, bool allowSD) {
+-	u32 chipID = cardGetId();
++	u32 chipID = ramImageSize ? 0 : cardGetId();
+@@ -78,0 +80,2 @@ void runLaunchEngine (int language, u32 fileCluster, bool allowSD) {
++	tmpData->ramImageSize = ramImageSize;
++	DC_FlushRange(tmpData, sizeof(*tmpData));
+@@ -80 +83 @@ void runLaunchEngine (int language, u32 fileCluster, bool allowSD) {
+-	setSCFG(allowSD);
++	if (!ramImageSize) setSCFG(allowSD);
+@@ -89,0 +93,15 @@ void runLaunchEngine (int language, u32 fileCluster, bool allowSD) {
++
++
++void runLaunchEngine(int language, u32 fileCluster, bool allowSD)
++{
++    launchEngine(language, fileCluster, allowSD, 0);
++}
++
++bool runLaunchEngineFromMemory(const void *rom, u32 size)
++{
++    if (isDSiMode() || !nrio_ram_image_valid(rom, size)) return false;
++    memcpy((void *)NRIO_RAM_IMAGE, rom, size);
++    DC_FlushRange((void *)NRIO_RAM_IMAGE, size);
++    launchEngine(-1, 0, false, size);
++    return false;
++}
+diff --git a/arm9/source/launch_engine.h b/arm9/source/launch_engine.h
+index 6cfb70f..d6bf80a 100644
+--- a/arm9/source/launch_engine.h
++++ b/arm9/source/launch_engine.h
+@@ -29,0 +30 @@ void runLaunchEngine (int language, u32 fileCluster, bool allowSD);
++bool runLaunchEngineFromMemory(const void *rom, u32 size);
 diff --git a/arm9/source/main.cpp b/arm9/source/main.cpp
-index 3d1a9e7..1a3b31a 100644
+index 3d1a9e7..2766b20 100644
 --- a/arm9/source/main.cpp
 +++ b/arm9/source/main.cpp
-@@ -198,0 +199,7 @@ void CardInit(bool Silent = true, bool SkipSlotReset = false) {
+@@ -22,0 +23,2 @@
++extern "C" const u8 usb_mount_bin[] __attribute__((weak));
++extern "C" const u8 usb_mount_bin_end[] __attribute__((weak));
+@@ -198,0 +201,7 @@ void CardInit(bool Silent = true, bool SkipSlotReset = false) {
 +static const DISC_INTERFACE *GetSlot2Storage() {
 +	const DISC_INTERFACE *storage = dldiGetInternal();
 +	const u32 required = FEATURE_SLOT_GBA | FEATURE_MEDIUM_CANREAD | FEATURE_MEDIUM_CANWRITE;
@@ -17,7 +63,7 @@ index 3d1a9e7..1a3b31a 100644
 +	return storage && (storage->features & mask) == required ? storage : nullptr;
 +}
 +
-@@ -215,2 +222,9 @@ void MountFATDevices(bool mountSD = true) {
+@@ -215,2 +224,9 @@ void MountFATDevices(bool mountSD = true) {
 -		// if (!fatMounted)fatMounted = fatMountSimple("nrio", &io_nrio_);
 -		if (!fatMounted)fatMounted = fatInitDefault();
 +		if (!fatMounted) {
@@ -29,11 +75,11 @@ index 3d1a9e7..1a3b31a 100644
 +				fatMounted = fatInitDefault();
 +			}
 +		}
-@@ -542,0 +557 @@ void DoImageRestore() {
+@@ -542,0 +559 @@ void DoImageRestore() {
 +	puts("Back up this cart before writes\nwhenever possible.\n");
-@@ -624,0 +640 @@ void DoSector0Restore() {
+@@ -624,0 +642 @@ void DoSector0Restore() {
 +	puts("Back up this cart before writes\nwhenever possible.\n");
-@@ -1042 +1058,32 @@ void DoUdiskDump() {
+@@ -1042 +1060,44 @@ void DoUdiskDump() {
 -int UtilityMenu() {
 +extern "C" void nrioTool_sd_recovery(int action, const char *root);
 +
@@ -47,6 +93,18 @@ index 3d1a9e7..1a3b31a 100644
 +		nrioTool_sd_recovery(action, root);
 +		CardInit();
 +	}
++}
++
++static bool UsbMountAvailable() {
++	return !wasDSi && usb_mount_bin && usb_mount_bin_end;
++}
++
++static void DoUsbMount() {
++	if (UsbMountAvailable()) {
++		u32 size = (uintptr_t)usb_mount_bin_end - (uintptr_t)usb_mount_bin;
++		runLaunchEngineFromMemory(usb_mount_bin, size);
++	}
++	DoError("Could not start USB FAT mount.");
 +}
 +
 +static int AdvancedRecoveryMenu() {
@@ -67,16 +125,17 @@ index 3d1a9e7..1a3b31a 100644
 +}
 +
 +int UtilityMenu(bool recoveryOnly = false) {
-@@ -1043,0 +1091 @@ int UtilityMenu() {
+@@ -1043,0 +1105 @@ int UtilityMenu() {
 +	const bool recoveryAvailable = RecoveryStorageRoot() != nullptr;
-@@ -1046 +1094,2 @@ int UtilityMenu() {
+@@ -1046 +1108,3 @@ int UtilityMenu() {
 -	if (wasDSi)printf("Press [A] to boot GodMode9Nrio\n");
 +	if (wasDSi && !recoveryOnly)printf("Press [A] to boot GodMode9Nrio\n");
++	else if (UsbMountAvailable()) puts("Press [A] to mount USB drive");
 +	else printf("\n");
-@@ -1048 +1097 @@ int UtilityMenu() {
+@@ -1048 +1112 @@ int UtilityMenu() {
 -	printf("Press [X] to build update file\n");
 +	printf("%s\n", recoveryOnly ? "" : "Press [X] to build update file");
-@@ -1049,0 +1099,11 @@ int UtilityMenu() {
+@@ -1049,0 +1114,11 @@ int UtilityMenu() {
 +	if (recoveryAvailable) {
 +		printf("Press [Y] to fix DSi safe mode\n\n"
 +		       "Press [R] to install banner\n\n"
@@ -88,28 +147,28 @@ index 3d1a9e7..1a3b31a 100644
 +	} else {
 +		printf("\n\n\n\n\n\n\n\n\n");
 +	}
-@@ -1051,4 +1111 @@ int UtilityMenu() {
+@@ -1051,4 +1126 @@ int UtilityMenu() {
 -	printf("\n");
 -	printf("\n"); // printf("Press [Y] write banner to cart\n");
 -	printf("\n");
 -	printf("\n\n\n\n\n\n\n\nPress [B] to go to main menu...\n");
 +	printf("%s\n", recoveryOnly ? "Press [B] to exit" : "Press [B] to go to main menu...");
-@@ -1057,0 +1115,2 @@ int UtilityMenu() {
+@@ -1057,0 +1130,2 @@ int UtilityMenu() {
 +		if (recoveryAvailable && (keysDown() & KEY_X) &&
 +		    (keysHeld() & (KEY_L | KEY_R)) == (KEY_L | KEY_R)) return 9;
-@@ -1059,2 +1118,2 @@ int UtilityMenu() {
+@@ -1059,2 +1133,2 @@ int UtilityMenu() {
 -			case KEY_A: 	{ if (wasDSi)value = 0; } break;
 -			case KEY_X:		{ value = 1; } break;
-+			case KEY_A: 	{ if (wasDSi && !recoveryOnly)value = 0; } break;
++			case KEY_A: { if (UsbMountAvailable()) value = 10; else if (wasDSi && !recoveryOnly) value = 0; } break;
 +			case KEY_X:		{ if (!recoveryOnly)value = 1; } break;
-@@ -1061,0 +1121,6 @@ int UtilityMenu() {
+@@ -1061,0 +1136,6 @@ int UtilityMenu() {
 +			case KEY_Y:		{ if (recoveryAvailable)value = 2; } break;
 +			case KEY_R:		{ if (recoveryAvailable)value = 3; } break;
 +			case KEY_SELECT:	{ if (recoveryAvailable)value = 5; } break;
 +			case KEY_UP:	{ if (recoveryAvailable)value = 6; } break;
 +			case KEY_DOWN:	{ if (recoveryAvailable)value = 7; } break;
 +			case KEY_START:	{ if (recoveryAvailable)value = 8; } break;
-@@ -1068,0 +1134,20 @@ int UtilityMenu() {
+@@ -1068,0 +1149,21 @@ int UtilityMenu() {
 +static void RunStorageRecoveryMenu(const char *root) {
 +	if (SCFGUnlocked) enableSlot1();
 +	if (access(root, F_OK) != 0) mkdir(root, 0777);
@@ -125,14 +184,22 @@ index 3d1a9e7..1a3b31a 100644
 +				int action = AdvancedRecoveryMenu();
 +				if (action >= 0) nrioTool_sd_recovery(action, root);
 +			} break;
++			case 10: DoUsbMount(); break;
 +			case 4: return;
 +		}
 +	}
 +}
 +
-@@ -1188,0 +1274 @@ int main() {
+@@ -1188,0 +1290,2 @@ int main() {
++	const bool usbOnly = UsbMountAvailable() && (keysHeld() & KEY_X);
 +	bool recoveryOnly = (keysHeld() & KEY_L) != 0;
-@@ -1200,0 +1287,9 @@ int main() {
+@@ -1191,0 +1295,5 @@ int main() {
++	if (usbOnly) {
++		DoUsbMount();
++		fifoSendValue32(FIFO_USER_03, 1);
++		return 0;
++	}
+@@ -1200,0 +1309,9 @@ int main() {
 +	if (recoveryOnly) {
 +		if (wasDSi || GetSlot2Storage()) MountFATDevices();
 +		if (const char *root = RecoveryStorageRoot()) RunStorageRecoveryMenu(root);
@@ -142,7 +209,7 @@ index 3d1a9e7..1a3b31a 100644
 +		fifoSendValue32(FIFO_USER_03, 1);
 +		return 0;
 +	}
-@@ -1299 +1394,10 @@ int main() {
+@@ -1299 +1416,11 @@ int main() {
 -					// case 3: { DoBannerWrite(); } break;
 +					case 2: { DoStorageRecovery(0); } break;
 +					case 3: { DoStorageRecovery(1); } break;
@@ -150,7 +217,66 @@ index 3d1a9e7..1a3b31a 100644
 +					case 6: { DoStorageRecovery(3); } break;
 +					case 7: { DoStorageRecovery(4); } break;
 +					case 8: { DoStorageRecovery(5); } break;
++					case 10: { DoUsbMount(); } break;
 +					case 9: {
 +						int action = AdvancedRecoveryMenu();
 +						if (action >= 0) DoStorageRecovery(action);
 +					} break;
+diff --git a/bootloader/source/common.h b/bootloader/source/common.h
+index b2cf887..3ecd66c 100644
+--- a/bootloader/source/common.h
++++ b/bootloader/source/common.h
+@@ -29 +29 @@
+-typedef struct sLauncherSettings { u32 cachedChipID; u16 language; u16 allowSD; unsigned long fileCluster; } tLauncherSettings;
++typedef struct sLauncherSettings { u32 cachedChipID; u16 language; u16 allowSD; unsigned long fileCluster; u32 ramImageSize; } tLauncherSettings;
+diff --git a/bootloader/source/main.arm7.c b/bootloader/source/main.arm7.c
+index a73e0bf..90a591c 100644
+--- a/bootloader/source/main.arm7.c
++++ b/bootloader/source/main.arm7.c
+@@ -49,0 +50 @@
++#include "ram-launch.h"
+@@ -62,0 +64 @@ static unsigned long storedFileCluster;
++static u32 ramImageSize;
+@@ -332 +334,6 @@ static void arm7_resetMemory (void) {
+-	arm7_clearmem ((void*)0x02000000, 0x002FD800);
++	if (ramImageSize) {
++		arm7_clearmem((void *)0x02000000, NRIO_RAM_IMAGE - 0x02000000);
++		arm7_clearmem((void *)(NRIO_RAM_IMAGE + ramImageSize), 0x022FD800 - NRIO_RAM_IMAGE - ramImageSize);
++	} else {
++		arm7_clearmem((void*)0x02000000, 0x002FD800);
++	}
+@@ -402,0 +410,11 @@ static void arm7_loadBinary (aFile File) {
++static void arm7_loadMemBinary(void)
++{
++	const u8 *rom = (const u8 *)NRIO_RAM_IMAGE;
++	tonccpy((void *)NDS_HEADER, rom, 0x170);
++	ndsHeader = (tNDSHeader *)NDS_HEADER;
++	tonccpy(ndsHeader->arm9destination, rom + ndsHeader->arm9romOffset, ndsHeader->arm9binarySize);
++	tonccpy(ndsHeader->arm7destination, rom + ndsHeader->arm7romOffset, ndsHeader->arm7binarySize);
++	arm7_clearmem((void *)NRIO_RAM_IMAGE, ramImageSize);
++	setMemoryAddress(ndsHeader);
++}
++
+@@ -419,2 +437 @@ void arm7_main (void) {
+-	// Init card
+-	if(!FAT_InitFiles(true))errorOutput(ERR_SDINIT, true);
++	ramImageSize = tmpData->ramImageSize;
+@@ -424 +441,6 @@ void arm7_main (void) {
+-	getFileFromCluster(&file, storedFileCluster);
++	if (ramImageSize) {
++		if (!nrio_ram_image_valid((const u32 *)NRIO_RAM_IMAGE, ramImageSize))
++			errorOutput(ERR_FILELOAD, true);
++	} else {
++		if (!FAT_InitFiles(true)) errorOutput(ERR_SDINIT, true);
++		getFileFromCluster(&file, storedFileCluster);
+@@ -426,3 +448,3 @@ void arm7_main (void) {
+-	if ((file.firstCluster < CLUSTER_FIRST) || (file.firstCluster >= CLUSTER_EOF))errorOutput(ERR_FILELOAD, true);
+-
+-	if (file.firstCluster == CLUSTER_FREE)errorOutput(ERR_FILELOAD, true);
++		if (file.firstCluster < CLUSTER_FIRST || file.firstCluster >= CLUSTER_EOF)
++			errorOutput(ERR_FILELOAD, true);
++	}
+@@ -449 +471,2 @@ void arm7_main (void) {
+-	arm7_loadBinary(file);
++	if (ramImageSize) arm7_loadMemBinary();
++	else arm7_loadBinary(file);

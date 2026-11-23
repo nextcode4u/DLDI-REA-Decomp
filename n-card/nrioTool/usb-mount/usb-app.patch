@@ -1,0 +1,59 @@
+diff --git a/source/main.c b/source/main.c
+index 7138d36..d185b9b 100644
+--- a/source/main.c
++++ b/source/main.c
+@@ -62,2 +62,4 @@ ITCM_CODE int tud_idle() {
+-		if (keysDown() & KEY_START)
+-			break;
++		if (keysDown() & KEY_START) {
++			if (!tud_mounted() || msc_dldi_ejected()) break;
++			puts("Eject the PC drive first.");
++		}
+@@ -75,0 +78 @@ ITCM_CODE int tud_idle() {
++	msc_dldi_close();
+@@ -86,6 +88,0 @@ int main(void) {
+-  tusb_rhport_init_t dev_init = {
+-    .role = TUSB_ROLE_DEVICE,
+-    .speed = TUSB_SPEED_AUTO
+-  };
+-  bool usb_init_status = !isDSiMode() && tusb_init(BOARD_TUD_RHPORT, &dev_init);
+-
+@@ -93 +90 @@ int main(void) {
+-    printf(UI_COLOR_ERROR "This program is not compatible with DSi/3DS consoles.\n");
++    puts("Use a DS or DS Lite with a\nSlot-2 USB writer.");
+@@ -96,0 +94 @@ int main(void) {
++  sysSetCartOwner(BUS_OWNER_ARM9);
+@@ -99,2 +97,2 @@ int main(void) {
+-  if (!usb_init_status) {
+-    printf(UI_COLOR_ERROR "Could not initialize USB!\n");
++  if (!msc_dldi_initialize()) {
++    puts("Could not open the N-Card FAT\nvolume. Check the cart and driver.");
+@@ -104,2 +102,7 @@ int main(void) {
+-  if (!msc_dldi_initialize()) {
+-    printf(UI_COLOR_ERROR "Could not initialize DLDI!\n");
++  tusb_rhport_init_t dev_init = {
++    .role = TUSB_ROLE_DEVICE,
++    .speed = TUSB_SPEED_AUTO
++  };
++  if (!tusb_init(BOARD_TUD_RHPORT, &dev_init)) {
++    puts("Could not initialize Slot-2 USB.");
++    msc_dldi_close();
+@@ -109 +112 @@ int main(void) {
+-  printf(UI_COLOR_INFO "Ready. Press START to exit.\n");
++  puts("Connect USB to mount the drive.\nEject on the PC before START.");
+diff --git a/source/msc.h b/source/msc.h
+index 7990e65..5f80085 100644
+--- a/source/msc.h
++++ b/source/msc.h
+@@ -29 +29,3 @@
+-ITCM_CODE bool msc_dldi_initialize(void);
++bool msc_dldi_initialize(void);
++bool msc_dldi_ejected(void);
++void msc_dldi_close(void);
+diff --git a/source/usb_descriptors.c b/source/usb_descriptors.c
+index 2c3e679..32fb67b 100644
+--- a/source/usb_descriptors.c
++++ b/source/usb_descriptors.c
+@@ -129 +129 @@ char const *string_desc_arr[] =
+-  "NRIO USB Disk",               // 2: Product
++  "N-Card FAT Drive",            // 2: Product

@@ -18,6 +18,9 @@ C_RECONSTRUCTION := source/card/nand_transfer.c source/nand/page_ops.c \
 
 # A plain build uses C. Verification defaults to the reference-matching variant.
 C_ONLY ?= $(if $(filter verify,$(MAKECMDGOALS)),0,1)
+ifeq ($(USB_MOUNT),1)
+CPPFLAGS += -DNRIO_USB_MOUNT
+endif
 ifeq ($(C_ONLY),1)
 BUILD := build
 ASM_SOURCES := source/dldi/header.S source/system/data.S
