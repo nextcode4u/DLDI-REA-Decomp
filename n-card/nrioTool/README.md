@@ -2,6 +2,8 @@
 
 This integration adds recovery options to Apache Thunder's nrioTool utility menu and links the same NAND backend used by the USB recovery toolkit. It uses nrioTool's existing DSi SD mount. The integration is based on [nrioTool commit `4cf70ae`](https://github.com/ApacheThunder/nrioTool/tree/4cf70ae13f908e2391cd608f833699d711a7d92a).
 
+[Download the compiled nrioTool with the menu picker and USB mount](nrioTool.nds?raw=1).
+
 ## Menu controls
 
 Use **Up/Down** to highlight a row, **A** to select it, and **B** to go back or exit. Choose **Utility Menu** from the Main Menu for cart checks, block-0 backups, and USB mounting or GodMode9Nrio where available. Choose **Advanced NAND tools** for boot-area writes, update conversion, and test dumps.
