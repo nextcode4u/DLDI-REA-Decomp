@@ -49,13 +49,15 @@ index 6cfb70f..d6bf80a 100644
 @@ -29,0 +30 @@ void runLaunchEngine (int language, u32 fileCluster, bool allowSD);
 +bool runLaunchEngineFromMemory(const void *rom, u32 size);
 diff --git a/arm9/source/main.cpp b/arm9/source/main.cpp
-index 3d1a9e7..2766b20 100644
+index 3d1a9e7..ead3e39 100644
 --- a/arm9/source/main.cpp
 +++ b/arm9/source/main.cpp
 @@ -22,0 +23,2 @@
 +extern "C" const u8 usb_mount_bin[] __attribute__((weak));
 +extern "C" const u8 usb_mount_bin_end[] __attribute__((weak));
-@@ -198,0 +201,7 @@ void CardInit(bool Silent = true, bool SkipSlotReset = false) {
+@@ -82 +83,0 @@ DTCM_DATA volatile int BlockTableSize = 0;
+-DTCM_DATA volatile int MenuID = 0;
+@@ -198,0 +200,7 @@ void CardInit(bool Silent = true, bool SkipSlotReset = false) {
 +static const DISC_INTERFACE *GetSlot2Storage() {
 +	const DISC_INTERFACE *storage = dldiGetInternal();
 +	const u32 required = FEATURE_SLOT_GBA | FEATURE_MEDIUM_CANREAD | FEATURE_MEDIUM_CANWRITE;
@@ -63,7 +65,7 @@ index 3d1a9e7..2766b20 100644
 +	return storage && (storage->features & mask) == required ? storage : nullptr;
 +}
 +
-@@ -215,2 +224,9 @@ void MountFATDevices(bool mountSD = true) {
+@@ -215,2 +223,9 @@ void MountFATDevices(bool mountSD = true) {
 -		// if (!fatMounted)fatMounted = fatMountSimple("nrio", &io_nrio_);
 -		if (!fatMounted)fatMounted = fatInitDefault();
 +		if (!fatMounted) {
@@ -75,12 +77,28 @@ index 3d1a9e7..2766b20 100644
 +				fatMounted = fatInitDefault();
 +			}
 +		}
-@@ -542,0 +559 @@ void DoImageRestore() {
+@@ -542,0 +558 @@ void DoImageRestore() {
 +	puts("Back up this cart before writes\nwhenever possible.\n");
-@@ -624,0 +642 @@ void DoSector0Restore() {
+@@ -624,0 +641 @@ void DoSector0Restore() {
 +	puts("Back up this cart before writes\nwhenever possible.\n");
-@@ -1042 +1060,44 @@ void DoUdiskDump() {
+@@ -698 +715 @@ void DoTestDump() {
+-	printf("Press [A] to return to main menu\n\n");
++	printf("Press [A] to return to menu\n\n");
+@@ -1042,14 +1059,71 @@ void DoUdiskDump() {
 -int UtilityMenu() {
+-	if(!WarningPosted)LoadTopScreenUtilitySplash();
+-	int value = -1;
+-	consoleClear();
+-	if (wasDSi)printf("Press [A] to boot GodMode9Nrio\n");
+-	printf("\n");
+-	printf("Press [X] to build update file\n");
+-	printf("\n"); 
+-	printf("\n"); 
+-	printf("\n");
+-	printf("\n"); // printf("Press [Y] write banner to cart\n");
+-	printf("\n");
+-	printf("\n\n\n\n\n\n\n\nPress [B] to go to main menu...\n");
+-	while(value == -1) {
 +extern "C" void nrioTool_sd_recovery(int action, const char *root);
 +
 +static const char *RecoveryStorageRoot() {
@@ -107,99 +125,268 @@ index 3d1a9e7..2766b20 100644
 +	DoError("Could not start USB FAT mount.");
 +}
 +
-+static int AdvancedRecoveryMenu() {
-+	consoleClear();
-+	puts("Advanced NAND recovery\n");
-+	puts("Press [Y] to replace safe mode");
-+	puts("Press [X] to repair stock uDisk");
-+	puts("\nPress [B] to return");
-+	while (true) {
-+		swiWaitForVBlank();
-+		scanKeys();
-+		switch (keysDown()) {
-+			case KEY_Y: return 6;
-+			case KEY_X: return 7;
-+			case KEY_B: return -1;
++enum class MenuAction {
++	Back,
++	Utility, Dldi,
++	DumpMain, DumpStage2, DumpUdisk, TestDump,
++	BootCart, BootGm9, Usb,
++	CheckCart, SaveBlock0, Advanced, BuildUpdate,
++	PatchSafeMode, InstallBanner, RestoreArm7, RestoreBlock0, ReplaceSafeMode, RepairUdisk,
++	DumpFatSector, RestoreFatSector, DumpFatImage, WriteFatImage,
++};
++
++struct MenuItem {
++	MenuAction action;
++	const char *label;
++	bool available = true;
++};
++
++template <size_t count>
++static MenuAction PickAction(const char *title, const MenuItem (&items)[count], bool exits = false) {
++	const MenuItem *visible[count];
++	size_t visibleCount = 0;
++	for (const auto &item : items) {
++		if (item.available) visible[visibleCount++] = &item;
++	}
++
++	size_t selected = 0;
++	bool redraw = true;
++	SelectBotConsole();
++	for (;;) {
++		if (redraw) {
++			consoleClear();
++			printf("%s\n\n", title);
++			size_t row = 2;
++			for (size_t i = 0; i < visibleCount; ++i) {
++				if (i && (visibleCount <= 7 || i % 2 == 0)) {
++					putchar('\n');
++					++row;
++				}
++				printf("%c %s\n", i == selected ? '>' : ' ', visible[i]->label);
++				++row;
++			}
++			for (; row < 16; ++row) putchar('\n');
++			puts(exits ? "Up/Down  A Select  B Exit" : "Up/Down  A Select  B Back");
++			redraw = false;
++		}
++
+@@ -1058,5 +1132,11 @@ int UtilityMenu() {
+-		switch (keysDown()){
+-			case KEY_A: 	{ if (wasDSi)value = 0; } break;
+-			case KEY_X:		{ value = 1; } break;
+-			// case KEY_LEFT:		{ value = 2; } break;
+-			case KEY_B:		{ value = 4; } break;
++		const u32 keys = keysDown();
++		if (keys & KEY_B) return MenuAction::Back;
++		if (!visibleCount) continue;
++		if (keys & KEY_UP) {
++			selected = selected ? selected - 1 : visibleCount - 1;
++			redraw = true;
++		} else if (keys & KEY_DOWN) {
++			selected = (selected + 1) % visibleCount;
++			redraw = true;
++		} else if (keys & KEY_A) {
++			return visible[selected]->action;
+@@ -1065 +1144,0 @@ int UtilityMenu() {
+-	return value;
+@@ -1067,0 +1147,60 @@ int UtilityMenu() {
++static void RunRecoveryAction(int action, const char *startupRecoveryRoot) {
++	if (startupRecoveryRoot) nrioTool_sd_recovery(action, startupRecoveryRoot);
++	else DoStorageRecovery(action);
++}
++
++static void RunAdvancedMenu(const char *startupRecoveryRoot, bool recoveryAvailable) {
++	const bool regular = !startupRecoveryRoot;
++	const MenuItem items[] = {
++		{MenuAction::PatchSafeMode, "Patch safe mode for DSi", recoveryAvailable},
++		{MenuAction::InstallBanner, "Install custom banner", recoveryAvailable},
++		{MenuAction::RestoreArm7, "Restore banner ARM7", recoveryAvailable},
++		{MenuAction::RestoreBlock0, "Restore block 0", recoveryAvailable},
++		{MenuAction::ReplaceSafeMode, "Replace safe-mode ROM", recoveryAvailable},
++		{MenuAction::RepairUdisk, "Repair stock uDisk", recoveryAvailable},
++		{MenuAction::BuildUpdate, "Build update file", regular},
++		{MenuAction::TestDump, "Test NAND dump", regular},
++	};
++	while (!ErrorState) {
++		switch (PickAction("Advanced NAND tools", items)) {
++			case MenuAction::PatchSafeMode: RunRecoveryAction(0, startupRecoveryRoot); break;
++			case MenuAction::InstallBanner: RunRecoveryAction(1, startupRecoveryRoot); break;
++			case MenuAction::RestoreArm7: RunRecoveryAction(3, startupRecoveryRoot); break;
++			case MenuAction::RestoreBlock0: RunRecoveryAction(4, startupRecoveryRoot); break;
++			case MenuAction::ReplaceSafeMode: RunRecoveryAction(6, startupRecoveryRoot); break;
++			case MenuAction::RepairUdisk: RunRecoveryAction(7, startupRecoveryRoot); break;
++			case MenuAction::BuildUpdate: DoUpdateConvert(); break;
++			case MenuAction::TestDump: DoTestDump(); break;
++			default: return;
 +		}
 +	}
 +}
 +
-+int UtilityMenu(bool recoveryOnly = false) {
-@@ -1043,0 +1105 @@ int UtilityMenu() {
-+	const bool recoveryAvailable = RecoveryStorageRoot() != nullptr;
-@@ -1046 +1108,3 @@ int UtilityMenu() {
--	if (wasDSi)printf("Press [A] to boot GodMode9Nrio\n");
-+	if (wasDSi && !recoveryOnly)printf("Press [A] to boot GodMode9Nrio\n");
-+	else if (UsbMountAvailable()) puts("Press [A] to mount USB drive");
-+	else printf("\n");
-@@ -1048 +1112 @@ int UtilityMenu() {
--	printf("Press [X] to build update file\n");
-+	printf("%s\n", recoveryOnly ? "" : "Press [X] to build update file");
-@@ -1049,0 +1114,11 @@ int UtilityMenu() {
-+	if (recoveryAvailable) {
-+		printf("Press [Y] to fix DSi safe mode\n\n"
-+		       "Press [R] to install banner\n\n"
-+		       "Press [SELECT] to save block 0\n\n"
-+		       "Press [UP] to restore ARM7\n\n"
-+		       "Press [Down] to restore block 0\n\n"
-+		       "Press [START] to check cart\n"
-+		       "Hold [L+R] + [X] for advanced\n");
-+	} else {
-+		printf("\n\n\n\n\n\n\n\n\n");
++static void RunUtilityMenu(const char *startupRecoveryRoot = nullptr) {
++	if (!WarningPosted) LoadTopScreenUtilitySplash();
++	const bool recoveryOnly = startupRecoveryRoot != nullptr;
++	while (!ErrorState) {
++		const bool recoveryAvailable = recoveryOnly || RecoveryStorageRoot() != nullptr;
++		const MenuItem items[] = {
++			{MenuAction::CheckCart, "Check cart", recoveryAvailable},
++			{MenuAction::SaveBlock0, "Back up block 0", recoveryAvailable},
++			{MenuAction::Usb, "Mount USB drive", UsbMountAvailable()},
++			{MenuAction::BootGm9, "Boot GodMode9Nrio", wasDSi && !recoveryOnly},
++			{MenuAction::Advanced, "Advanced NAND tools"},
++		};
++		switch (PickAction("Utility Menu", items, recoveryOnly)) {
++			case MenuAction::CheckCart: RunRecoveryAction(5, startupRecoveryRoot); break;
++			case MenuAction::SaveBlock0: RunRecoveryAction(2, startupRecoveryRoot); break;
++			case MenuAction::Usb: DoUsbMount(); break;
++			case MenuAction::BootGm9: SetSCFG(); DoGM9iBoot(); break;
++			case MenuAction::Advanced: RunAdvancedMenu(startupRecoveryRoot, recoveryAvailable); break;
++			default: return;
++		}
 +	}
-@@ -1051,4 +1126 @@ int UtilityMenu() {
--	printf("\n");
--	printf("\n"); // printf("Press [Y] write banner to cart\n");
--	printf("\n");
--	printf("\n\n\n\n\n\n\n\nPress [B] to go to main menu...\n");
-+	printf("%s\n", recoveryOnly ? "Press [B] to exit" : "Press [B] to go to main menu...");
-@@ -1057,0 +1130,2 @@ int UtilityMenu() {
-+		if (recoveryAvailable && (keysDown() & KEY_X) &&
-+		    (keysHeld() & (KEY_L | KEY_R)) == (KEY_L | KEY_R)) return 9;
-@@ -1059,2 +1133,2 @@ int UtilityMenu() {
--			case KEY_A: 	{ if (wasDSi)value = 0; } break;
--			case KEY_X:		{ value = 1; } break;
-+			case KEY_A: { if (UsbMountAvailable()) value = 10; else if (wasDSi && !recoveryOnly) value = 0; } break;
-+			case KEY_X:		{ if (!recoveryOnly)value = 1; } break;
-@@ -1061,0 +1136,6 @@ int UtilityMenu() {
-+			case KEY_Y:		{ if (recoveryAvailable)value = 2; } break;
-+			case KEY_R:		{ if (recoveryAvailable)value = 3; } break;
-+			case KEY_SELECT:	{ if (recoveryAvailable)value = 5; } break;
-+			case KEY_UP:	{ if (recoveryAvailable)value = 6; } break;
-+			case KEY_DOWN:	{ if (recoveryAvailable)value = 7; } break;
-+			case KEY_START:	{ if (recoveryAvailable)value = 8; } break;
-@@ -1068,0 +1149,21 @@ int UtilityMenu() {
++}
++
 +static void RunStorageRecoveryMenu(const char *root) {
 +	if (SCFGUnlocked) enableSlot1();
 +	if (access(root, F_OK) != 0) mkdir(root, 0777);
-+	for (;;) {
-+		switch (UtilityMenu(true)) {
-+			case 2: nrioTool_sd_recovery(0, root); break;
-+			case 3: nrioTool_sd_recovery(1, root); break;
-+			case 5: nrioTool_sd_recovery(2, root); break;
-+			case 6: nrioTool_sd_recovery(3, root); break;
-+			case 7: nrioTool_sd_recovery(4, root); break;
-+			case 8: nrioTool_sd_recovery(5, root); break;
-+			case 9: {
-+				int action = AdvancedRecoveryMenu();
-+				if (action >= 0) nrioTool_sd_recovery(action, root);
-+			} break;
-+			case 10: DoUsbMount(); break;
-+			case 4: return;
-+		}
-+	}
++	RunUtilityMenu(root);
 +}
-+
-@@ -1188,0 +1290,2 @@ int main() {
+@@ -1069,2 +1208 @@ int UtilityMenu() {
+-int DLDIMenu() {
+-	int value = -1;
++static void RunDldiMenu() {
+@@ -1073,5 +1211,4 @@ int DLDIMenu() {
+-		printf("WARNING! Leaving DLDI menu will\nrequire restart!\n");
+-		printf("Do you wish to continue?\n\n");
+-		printf("\nPress [A] to continue\n");
+-		printf("\nPress [B] to return to main menu\n");
+-		while(1) {
++		puts("Restart required after entering");
++		puts("the DLDI Menu.\n");
++		puts("A Continue  B Back");
++		for (;;) {
+@@ -1080,2 +1217,3 @@ int DLDIMenu() {
+-			if(keysDown() & KEY_A)break;
+-			if(keysDown() & KEY_B) { value = 6; break; }
++			const u32 keys = keysDown();
++			if (keys & KEY_B) return;
++			if (keys & KEY_A) break;
+@@ -1083,2 +1221 @@ int DLDIMenu() {
+-		consoleClear();
+-		if (value == 6) { return value; } else { dldiWarned = true; }
++		dldiWarned = true;
+@@ -1086 +1223 @@ int DLDIMenu() {
+-	if (WarningPosted)consoleClearTop(false);
++	if (WarningPosted) consoleClearTop(false);
+@@ -1095,2 +1232,5 @@ int DLDIMenu() {
+-		if (!nrioDLDIMounted) { DoError("DLDI Init Failed!\n"); return 4; }
+-		if (!uDiskFileFound)uDiskFileFound = (access("sd:/nrioFiles/xBootStrap.nds", F_OK) == 0);
++		if (!nrioDLDIMounted) {
++			DoError("DLDI Init Failed!\n");
++			return;
++		}
++		if (!uDiskFileFound) uDiskFileFound = (access("sd:/nrioFiles/xBootStrap.nds", F_OK) == 0);
+@@ -1098 +1237,0 @@ int DLDIMenu() {
+-	consoleClear();
+@@ -1100,21 +1239 @@ int DLDIMenu() {
+-	if ((cartSize == 0) && statvfs("fat:/", &st) == 0)cartSize = (st.f_bsize * st.f_blocks) / 1024;
+-	printf("Press [A] to boot cart menu\n");
+-	printf("\nPress [X] to dump sector 0\n");
+-	printf("\nPress [Y] to restore sector 0\n");
+-	printf("\nPress [DPAD UP] to dump FAT\nimage\n");
+-	printf("\nPress [START] to write default\nFAT image\n");
+-	printf("\n\n\n\n\n\n\n\nPress [B] to exit...\n");
+-	while(value == -1) {
+-		swiWaitForVBlank();
+-		scanKeys();
+-		switch (keysDown()){
+-			case KEY_A: 	{ value = 0; } break;
+-			case KEY_X: 	{ value = 1; } break;
+-			case KEY_Y: 	{ value = 2; } break;
+-			case KEY_UP:	{ value = 3; } break;
+-			case KEY_START:	{ value = 4; } break;
+-			case KEY_B:		{ ErrorState = true; value = 5; } break;
+-		}
+-	}
+-	return value;
+-}
++	if (!cartSize && statvfs("fat:/", &st) == 0) cartSize = (st.f_bsize * st.f_blocks) / 1024;
+@@ -1122,11 +1241,15 @@ int DLDIMenu() {
+-int MainMenu() {
+-	int value = -1;
+-	consoleClear();
+-	if (isBootleg) {
+-		printf("Press [A] to dump Bootleg SRL\n");
+-		printf("\n \n");
+-	} else {
+-		if (isCustom) {
+-			printf(" \n");
+-		} else {
+-			printf("Press [A] to dump Stage2 SRL\n");
++	const MenuItem items[] = {
++		{MenuAction::BootCart, "Boot cart menu"},
++		{MenuAction::DumpFatSector, "Dump FAT sector 0"},
++		{MenuAction::DumpFatImage, "Dump FAT image"},
++		{MenuAction::RestoreFatSector, "Restore FAT sector 0"},
++		{MenuAction::WriteFatImage, "Write default FAT image"},
++	};
++	while (!ErrorState) {
++		switch (PickAction("DLDI Menu", items, true)) {
++			case MenuAction::BootCart: DoCartBoot(); break;
++			case MenuAction::DumpFatSector: DoSector0Dump(); break;
++			case MenuAction::DumpFatImage: DoImageDump(); break;
++			case MenuAction::RestoreFatSector: DoSector0Restore(); break;
++			case MenuAction::WriteFatImage: DoImageRestore(); break;
++			default: ErrorState = true; break;
+@@ -1134 +1256,0 @@ int MainMenu() {
+-		printf("\nPress [Y] to dump UDISK SRL\n");
+@@ -1136,25 +1257,0 @@ int MainMenu() {
+-	if (wasDSi)printf("\nPress [X] go to DLDI menu\n");
+-	printf("\nPress [DPAD LEFT] dump main SRL\n");
+-	printf("\nPress [DPAD RIGHT] to do test\ndump\n");
+-	printf("\nPress [L] go to utility menu\n");
+-	
+-	if (!wasDSi)printf("\n");
+-	printf("\n\n\n\nPress [B] to exit\n");
+-	// printf("START to write new banner\n");
+-	// printf("SELECT to write new Arm binaries\n\n\n");
+-	while(value == -1) {
+-		swiWaitForVBlank();
+-		scanKeys();
+-		switch (keysDown()) {
+-			case KEY_A: 		{ value = 0; } break;
+-			case KEY_Y: 		{ value = 1; } break;
+-			case KEY_L: 		{ value = 2; } break;
+-			case KEY_X: 		{ if (wasDSi)value = 3; } break;
+-			case KEY_LEFT: 		{ value = 4; } break;
+-			case KEY_RIGHT:		{ value = 5; } break;
+-			case KEY_B:			{ value = 6; } break;
+-			case KEY_START:		{ if (wasDSi)value = 7; } break;
+-			case KEY_SELECT:	{ if (wasDSi)value = 8; } break;
+-		}
+-	}
+-	return value;
+@@ -1162,0 +1260,11 @@ int MainMenu() {
++static MenuAction MainMenu() {
++	const MenuItem items[] = {
++		{MenuAction::Utility, "Utility Menu"},
++		{MenuAction::DumpMain, "Dump main SRL"},
++		{MenuAction::DumpStage2, isBootleg ? "Dump bootleg SRL" : "Dump Stage2 SRL", !isCustom},
++		{MenuAction::DumpUdisk, "Dump uDisk SRL", !isBootleg},
++		{MenuAction::Dldi, "DLDI Menu", wasDSi},
++		{MenuAction::BootCart, "Boot cart menu", wasDSi},
++	};
++	return PickAction("Main Menu", items, true);
++}
+@@ -1188,0 +1297,2 @@ int main() {
 +	const bool usbOnly = UsbMountAvailable() && (keysHeld() & KEY_X);
 +	bool recoveryOnly = (keysHeld() & KEY_L) != 0;
-@@ -1191,0 +1295,5 @@ int main() {
+@@ -1191,0 +1302,5 @@ int main() {
 +	if (usbOnly) {
 +		DoUsbMount();
 +		fifoSendValue32(FIFO_USER_03, 1);
 +		return 0;
 +	}
-@@ -1200,0 +1309,9 @@ int main() {
+@@ -1200,0 +1316,9 @@ int main() {
 +	if (recoveryOnly) {
 +		if (wasDSi || GetSlot2Storage()) MountFATDevices();
 +		if (const char *root = RecoveryStorageRoot()) RunStorageRecoveryMenu(root);
@@ -209,19 +396,69 @@ index 3d1a9e7..2766b20 100644
 +		fifoSendValue32(FIFO_USER_03, 1);
 +		return 0;
 +	}
-@@ -1299 +1416,11 @@ int main() {
+@@ -1266,51 +1390,11 @@ int main() {
+-		switch (MenuID) {
+-			case 0: {
+-				switch (MainMenu()) {
+-					case 0: { if (!isCustom)DoStage2Dump(); } break;
+-					case 1: { if (!isBootleg)DoUdiskDump(); } break;
+-					case 2: { MenuID = 1; } break;
+-					case 3: { MenuID = 2; } break;
+-					case 4: { DoStage1Dump(); } break;
+-					case 5: { DoTestDump(); } break;
+-					case 6: { ErrorState = true; } break;
+-					case 7: {
+-						if (wasDSi) {
+-							SetSCFG();
+-							DoCartBoot();
+-						}
+-					} break;
+-					case 8: {
+-						if (wasDSi) {
+-							SetSCFG();
+-							DoGM9iBoot();
+-						}
+-					} break;
+-				}
+-			} break;
+-			case 1: {
+-				switch (UtilityMenu()) {
+-					case 0: {
+-						if (wasDSi) {
+-							SetSCFG();
+-							DoGM9iBoot();
+-						}
+-					} break;
+-					case 1: { DoUpdateConvert(); } break;
 -					// case 3: { DoBannerWrite(); } break;
-+					case 2: { DoStorageRecovery(0); } break;
-+					case 3: { DoStorageRecovery(1); } break;
-+					case 5: { DoStorageRecovery(2); } break;
-+					case 6: { DoStorageRecovery(3); } break;
-+					case 7: { DoStorageRecovery(4); } break;
-+					case 8: { DoStorageRecovery(5); } break;
-+					case 10: { DoUsbMount(); } break;
-+					case 9: {
-+						int action = AdvancedRecoveryMenu();
-+						if (action >= 0) DoStorageRecovery(action);
-+					} break;
+-					case 4: { 
+-						MenuID = 0; 
+-						if (!WarningPosted)LoadTopScreenSplash();
+-					} break;
+-				}
+-			} break;
+-			case 2: {
+-				switch (DLDIMenu()) {
+-					case 0: { DoCartBoot(); } break;
+-					case 1: { DoSector0Dump(); } break;
+-					case 2: { DoSector0Restore(); } break;
+-					case 3: { DoImageDump(); } break;
+-					case 4: { DoImageRestore(); } break;
+-					case 5: { ErrorState = true; } break;
+-					case 6: { MenuID = 0; } break;
+-				}
+-			} break;
++		switch (MainMenu()) {
++			case MenuAction::Utility:
++				RunUtilityMenu();
++				if (!WarningPosted) LoadTopScreenSplash();
++				break;
++			case MenuAction::Dldi: RunDldiMenu(); break;
++			case MenuAction::DumpMain: DoStage1Dump(); break;
++			case MenuAction::DumpStage2: DoStage2Dump(); break;
++			case MenuAction::DumpUdisk: DoUdiskDump(); break;
++			case MenuAction::BootCart: SetSCFG(); DoCartBoot(); break;
++			default: ErrorState = true; break;
 diff --git a/bootloader/source/common.h b/bootloader/source/common.h
 index b2cf887..3ecd66c 100644
 --- a/bootloader/source/common.h
@@ -230,7 +467,7 @@ index b2cf887..3ecd66c 100644
 -typedef struct sLauncherSettings { u32 cachedChipID; u16 language; u16 allowSD; unsigned long fileCluster; } tLauncherSettings;
 +typedef struct sLauncherSettings { u32 cachedChipID; u16 language; u16 allowSD; unsigned long fileCluster; u32 ramImageSize; } tLauncherSettings;
 diff --git a/bootloader/source/main.arm7.c b/bootloader/source/main.arm7.c
-index a73e0bf..90a591c 100644
+index a73e0bf..ad08241 100644
 --- a/bootloader/source/main.arm7.c
 +++ b/bootloader/source/main.arm7.c
 @@ -49,0 +50 @@
