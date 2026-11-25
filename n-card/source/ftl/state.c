@@ -63,3 +63,8 @@ u8 nrio_first_pending_physical STATE(5b9c);
 u32 nrio_block_table_address STATE(5ba0);
 
 u32 nrio_cached_logical_page = 0xffffffff;
+
+#ifdef NRIO_UNIFIED
+u32 nrio_zone_map_fingerprints[256];
+u32 nrio_bus_fault;
+#endif

@@ -8,7 +8,11 @@ nrio_header:
     .byte 0x0e               @ Relocate glue and GOT, then clear BSS
     .byte 0                  @ Application allocation is filled by the patcher
 
+.ifdef NRIO_EXPERIMENTAL
+    .asciz "NRIO Experimental Read Only"
+.else
     .asciz "NAND FLASH CARD LIBFATNRIO"
+.endif
     .space 0x40 - (. - nrio_header)
     .word nrio_header
     .word __bss_start
@@ -20,7 +24,11 @@ nrio_header:
     .word __bss_end
 
     .ascii "NRIO"
+.ifdef NRIO_EXPERIMENTAL
+    .word 0x21               @ Slot-1, read only
+.else
     .word 0x23               @ Slot-1, readable and writable
+.endif
     .word nrio_startup
     .word nrio_is_inserted
     .word nrio_read_sectors

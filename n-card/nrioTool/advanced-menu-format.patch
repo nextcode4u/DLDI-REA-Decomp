@@ -1,0 +1,54 @@
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -22,6 +22,7 @@
+ #include "launch_engine.h"
+ #include "srl-dump.h"
+ #include "file-browser.h"
++#include "button-legend.h"
+ extern "C" const u8 usb_mount_bin[] __attribute__((weak));
+ extern "C" const u8 usb_mount_bin_end[] __attribute__((weak));
+ 
+@@ -882,18 +883,34 @@
+ 	for (;;) {
+ 		if (redraw) {
+ 			consoleClear();
+-			printf("%s\n\n", title);
+-			size_t row = 2;
+-			for (size_t i = 0; i < visibleCount; ++i) {
+-				if (i && (visibleCount <= 7 || i % 2 == 0)) {
+-					putchar('\n');
++			const size_t footer = 16;
++			if (2 + visibleCount * 2 > footer + 1) {
++				// Long menus use a uniform one-row list. Keep the footer
++				// inside the visible screen even with older splash art.
++				const size_t footerRow = 24 - BottomConsoleRow() - 4;
++				const size_t rows = footerRow - 3;
++				const size_t from = selected < rows ? 0 : selected - rows + 1;
++				const size_t to = from + rows < visibleCount ? from + rows : visibleCount;
++				printf("%s\n", title);
++				if (visibleCount > rows)
++					printf("Options %lu-%lu of %lu\n", (unsigned long)(from + 1),
++					       (unsigned long)to, (unsigned long)visibleCount);
++				else putchar('\n');
++				for (size_t i = from; i < to; ++i)
++					printf("%c %s\n", i == selected ? '>' : ' ', visible[i]->label);
++				for (size_t row = 2 + to - from; row < footerRow; ++row) putchar('\n');
++				nrio_button_legend(exits ? "Up/Down A Select B Exit" : "Up/Down A Select B Back", nullptr);
++			} else {
++				printf("%s\n\n", title);
++				size_t row = 2;
++				for (size_t i = 0; i < visibleCount; ++i) {
++					if (i) { putchar('\n'); ++row; }
++					printf("%c %s\n", i == selected ? '>' : ' ', visible[i]->label);
+ 					++row;
+ 				}
+-				printf("%c %s\n", i == selected ? '>' : ' ', visible[i]->label);
+-				++row;
++				for (; row < footer; ++row) putchar('\n');
++				puts(exits ? "Up/Down  A Select  B Exit" : "Up/Down  A Select  B Back");
+ 			}
+-			for (; row < 16; ++row) putchar('\n');
+-			puts(exits ? "Up/Down  A Select  B Exit" : "Up/Down  A Select  B Back");
+ 			redraw = false;
+ 		}
+ 

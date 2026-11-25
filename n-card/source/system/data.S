@@ -90,3 +90,8 @@ nrio_got:
     got_entry nrio_second_cache_active
     got_entry nrio_first_pending_physical
     got_entry nrio_block_table_address
+
+.ifdef NRIO_UNIFIED
+    got_entry nrio_zone_map_fingerprints
+    got_entry nrio_bus_fault
+.endif

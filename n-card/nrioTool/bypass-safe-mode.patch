@@ -1,0 +1,27 @@
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -857,7 +857,7 @@
+ 	DumpMain, DumpStage2, DumpUdisk, TestDump,
+ 	BootCart, BootGm9, Usb,
+ 	CheckCart, SaveBlock0, Advanced, BuildUpdate,
+-	PatchSafeMode, InstallBanner, RestoreArm7, RestoreBlock0, ReplaceSafeMode, RepairUdisk, UdiskSetup, QuickFormat,
++	PatchSafeMode, BypassSafeMode, InstallBanner, RestoreArm7, RestoreBlock0, ReplaceSafeMode, RepairUdisk, UdiskSetup, QuickFormat,
+ 	InstallUdisk, InstallXulu, SwitchXulu, CopyXMenu, RemoveUpdater,
+ 	DumpFatSector, RestoreFatSector, DumpFatImage, WriteFatImage,
+ };
+@@ -949,6 +949,7 @@
+ 		{MenuAction::RestoreArm7, "Restore banner ARM7", recoveryAvailable},
+ 		{MenuAction::RestoreBlock0, "Restore block 0", recoveryAvailable},
+ 		{MenuAction::ReplaceSafeMode, "Replace safe-mode ROM", recoveryAvailable},
++		{MenuAction::BypassSafeMode, "Bypass safe mode", recoveryAvailable},
+ 		{MenuAction::UdiskSetup, "uDisk setup"},
+ 		{MenuAction::RepairUdisk, "Repair stock uDisk", recoveryAvailable},
+ 		{MenuAction::BuildUpdate, "Build update file", regular},
+@@ -960,6 +961,7 @@
+ 			case MenuAction::RestoreArm7: RunRecoveryAction(3, startupRecoveryRoot); break;
+ 			case MenuAction::RestoreBlock0: RunRecoveryAction(4, startupRecoveryRoot); break;
+ 			case MenuAction::ReplaceSafeMode: RunRecoveryAction(6, startupRecoveryRoot); break;
++			case MenuAction::BypassSafeMode: RunRecoveryAction(9, startupRecoveryRoot); break;
+ 			case MenuAction::UdiskSetup: RunUdiskSetupMenu(startupRecoveryRoot ? startupRecoveryRoot : RecoveryStorageRoot()); break;
+ 			case MenuAction::RepairUdisk: RunRecoveryAction(7, startupRecoveryRoot); break;
+ 			case MenuAction::BuildUpdate: DoUpdateConvert(); break;

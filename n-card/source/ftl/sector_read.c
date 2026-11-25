@@ -18,6 +18,9 @@ NRIO_ROUTINE(2f58) void nrio_read_sector_with_mapping(void)
         if (nrio_current_zone != zone) {
             nrio_current_zone = zone;
             nrio_load_zone();
+#ifdef NRIO_UNIFIED
+            if (!nrio_sector_capacity) return;
+#endif
         }
 
         u8 physical = nrio_logical_block_map[block_in_zone];

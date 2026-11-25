@@ -1,0 +1,51 @@
+--- a/arm9/source/ui.cpp
++++ b/arm9/source/ui.cpp
+@@ -14,6 +14,7 @@
+ 
+ static PrintConsole tpConsole;
+ static PrintConsole btConsole;
++static unsigned queuedPalette = 15;
+ 
+ static int bg;
+ static int bgSub;
+@@ -25,6 +26,9 @@
+ void SelectTopConsole() { consoleSelect(&tpConsole); }
+ void SelectBotConsole() { consoleSelect(&btConsole); }
+ int BottomConsoleRow() { return btConsole.windowY; }
++void BottomConsoleQueuedColor(bool enabled) {
++	btConsole.fontCurPal = (enabled ? queuedPalette : 15) << 12;
++}
+ 
+ void consoleClearTop(bool KeepTopSelected) {
+ 	SelectTopConsole();
+@@ -103,6 +107,20 @@
+ 	
+ 	BG_PALETTE[255] = RGB15(31,31,31);
+ 	BG_PALETTE_SUB[255] = RGB15(31,31,31);
++    // The bitmap and text share BG_PALETTE_SUB. Pick a text ink slot
++    // that is unused by the bitmap so the highlight doesn't recolor it.
++    const u8 *backdrop = reinterpret_cast<const u8 *>(botConsoleBitmap);
++    bool used[256] = {};
++    for (unsigned i = 0; i < 256 * 256; ++i) used[backdrop[i]] = true;
++    for (unsigned bank = 0; bank < 15; ++bank) {
++        unsigned ink = bank * 16 + 15;
++        if (!used[ink]) {
++            BG_PALETTE_SUB[ink] = RGB15(31, 8, 8);
++            queuedPalette = bank;
++            break;
++        }
++    }
++
+ 	
+ 	consoleSelect(&btConsole);
+ }
+--- a/arm9/source/ui.h
++++ b/arm9/source/ui.h
+@@ -8,6 +8,7 @@
+ void SelectTopConsole(void);
+ void SelectBotConsole(void);
+ int BottomConsoleRow(void);
++void BottomConsoleQueuedColor(bool enabled);
+ void consoleClearTop(bool KeepTopSelected);
+ 
+ void PrintToTop(const char* Message, int data, bool clearScreen);

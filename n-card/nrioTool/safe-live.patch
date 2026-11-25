@@ -1,0 +1,48 @@
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -750,11 +750,22 @@
+ 	}
+ 
+ 	const char *root = wasDSi ? "sd:/nrioFiles" : "fat:/nrioFiles";
+-	char path[48], temporary[48];
+-	snprintf(path, sizeof(path), "%s/%s", root, name);
+-	snprintf(temporary, sizeof(temporary), "%s/%s.part", root, name);
+-	if (access(path, F_OK) == 0 || access(temporary, F_OK) == 0) {
+-		DoError("Move the existing dump or .part\nfile before dumping again.", false);
++	char path[56], temporary[56], outputName[32];
++	const bool numbered = !strcmp(name, "safe-original.nds");
++	bool available = false;
++	for (unsigned i = 0; i <= (numbered ? 999u : 0u); ++i) {
++		if (i == 0) snprintf(outputName, sizeof(outputName), "%s", name);
++		else snprintf(outputName, sizeof(outputName), "safe-original-%03u.nds", i);
++		snprintf(path, sizeof(path), "%s/%s", root, outputName);
++		snprintf(temporary, sizeof(temporary), "%s/%s.part", root, outputName);
++		if (access(path, F_OK) != 0 && access(temporary, F_OK) != 0) {
++			available = true;
++			break;
++		}
++	}
++	if (!available) {
++		DoError(numbered ? "No free safe-mode dump name." :
++		        "Move the existing dump or .part\nfile before dumping again.", false);
+ 		return;
+ 	}
+ 
+@@ -806,7 +817,7 @@
+ 		return;
+ 	}
+ 	consoleClear();
+-	printf("Saved %s\n\nA Back", name);
++	printf("Saved %s\n\nA Back", outputName);
+ 	do {
+ 		swiWaitForVBlank();
+ 		scanKeys();
+@@ -1148,7 +1159,7 @@
+ 			case MenuAction::Dldi: RunDldiMenu(); break;
+ 			case MenuAction::DumpMain: DoSrlDump("stage1.bin"); break;
+ 			case MenuAction::DumpStage2:
+-				DoSrlDump(srlLayout.bootleg ? "bootleg.nds" : "stage2.nds", srlLayout.stage2_table);
++				DoSrlDump(srlLayout.bootleg ? "bootleg.nds" : "safe-original.nds", srlLayout.stage2_table);
+ 				break;
+ 			case MenuAction::DumpUdisk: DoSrlDump("udisk.nds", srlLayout.udisk_table); break;
+ 			case MenuAction::TestDump: DoTestDump(); break;

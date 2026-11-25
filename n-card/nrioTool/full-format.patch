@@ -1,0 +1,27 @@
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -857,7 +857,7 @@
+ 	DumpMain, DumpStage2, DumpUdisk, TestDump,
+ 	BootCart, BootGm9, Usb,
+ 	CheckCart, SaveBlock0, Advanced, BuildUpdate,
+-	PatchSafeMode, BypassSafeMode, InstallBanner, RestoreArm7, RestoreBlock0, ReplaceSafeMode, RepairUdisk, UdiskSetup, QuickFormat,
++	PatchSafeMode, BypassSafeMode, InstallBanner, RestoreArm7, RestoreBlock0, ReplaceSafeMode, RepairUdisk, UdiskSetup, QuickFormat, FullFormat,
+ 	InstallUdisk, InstallXulu, SwitchXulu, CopyXMenu, RemoveUpdater,
+ 	DumpFatSector, RestoreFatSector, DumpFatImage, WriteFatImage,
+ };
+@@ -938,6 +938,7 @@
+ static void RunUdiskSetupMenu(const char *backupRoot) {
+ 	const MenuItem items[] = {
+ 		{MenuAction::QuickFormat, "Quick Format N-Card"},
++		{MenuAction::FullFormat, "Full Format N-Card"},
+ 		{MenuAction::CheckCart, "Check Cart", !backupRoot},
+ 		{MenuAction::InstallUdisk, "Install stock uDisk 1.45"},
+ 		{MenuAction::InstallXulu, "Set up XuluMenu"},
+@@ -948,6 +949,7 @@
+ 	for (;;) {
+ 		switch (PickAction("uDisk setup", items)) {
+ 			case MenuAction::QuickFormat: nrioTool_quick_format(backupRoot); break;
++			case MenuAction::FullFormat: nrioTool_full_format(backupRoot); break;
+ 			case MenuAction::CheckCart: nrioTool_sd_recovery(5, backupRoot); break;
+ 			case MenuAction::InstallUdisk: nrioTool_sd_recovery(8, backupRoot); break;
+ 			case MenuAction::InstallXulu: nrioTool_udisk_setup(NRIO_UDISK_XULU_FRESH, backupRoot); break;

@@ -1,0 +1,70 @@
+--- a/Makefile
++++ b/Makefile
+@@ -49,7 +49,11 @@
+ data:
+ 	@mkdir -p data
+ 
+-bundle:
++.PHONY: xulu-menu
++xulu-menu:
++	$(MAKE) -C XuluMenu
++
++bundle: xulu-menu
+ 	python3 embed_bundle.py "$(CURDIR)"
+ 
+ bootloader: data bundle
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -858,7 +858,7 @@
+ 	BootCart, BootGm9, Usb,
+ 	CheckCart, SaveBlock0, Advanced, BuildUpdate,
+ 	PatchSafeMode, InstallBanner, RestoreArm7, RestoreBlock0, ReplaceSafeMode, RepairUdisk, UdiskSetup, QuickFormat,
+-	InstallUdisk, CopyXMenu, RemoveUpdater,
++	InstallUdisk, InstallXulu, SwitchXulu, CopyXMenu, RemoveUpdater,
+ 	DumpFatSector, RestoreFatSector, DumpFatImage, WriteFatImage,
+ };
+ 
+@@ -923,13 +923,17 @@
+ 	const MenuItem items[] = {
+ 		{MenuAction::QuickFormat, "Quick Format N-Card"},
+ 		{MenuAction::InstallUdisk, "Install stock uDisk 1.45"},
+-		{MenuAction::CopyXMenu, "Copy XMenu files"},
++		{MenuAction::InstallXulu, "Set up XuluMenu"},
++		{MenuAction::SwitchXulu, "Switch to XuluMenu"},
++		{MenuAction::CopyXMenu, "Copy stock/custom XMenu"},
+ 		{MenuAction::RemoveUpdater, "Delete old uDisk installer"},
+ 	};
+ 	for (;;) {
+ 		switch (PickAction("uDisk setup", items)) {
+ 			case MenuAction::QuickFormat: nrioTool_quick_format(backupRoot); break;
+ 			case MenuAction::InstallUdisk: nrioTool_sd_recovery(8, backupRoot); break;
++			case MenuAction::InstallXulu: nrioTool_udisk_setup(NRIO_UDISK_XULU_FRESH, backupRoot); break;
++			case MenuAction::SwitchXulu: nrioTool_udisk_setup(NRIO_UDISK_XULU_SWITCH, backupRoot); break;
+ 			case MenuAction::CopyXMenu: nrioTool_udisk_setup(NRIO_UDISK_COPY_MENU, backupRoot); break;
+ 			case MenuAction::RemoveUpdater: nrioTool_udisk_setup(NRIO_UDISK_REMOVE_UPDATER, backupRoot); break;
+ 			default: return;
+--- a/XuluMenu/Makefile
++++ b/XuluMenu/Makefile
+@@ -29,6 +29,13 @@
+ #---------------------------------------------------------------------------------
+ all: $(TARGET).nds
+ 
++ifneq ($(wildcard nrio-banner.bin),)
++XULU_BANNER = -t nrio-banner.bin
++else
++# Older source snapshots omitted the banner binary.
++XULU_BANNER = -b ../icon.bmp "XuluMenu;N-Card;By Apache Thunder"
++endif
++
+ #---------------------------------------------------------------------------------
+ checkarm7:
+ 	$(MAKE) -C arm7
+@@ -40,7 +47,7 @@
+ #---------------------------------------------------------------------------------
+ $(TARGET).nds : $(NITRO_FILES) arm7/$(TARGET).elf arm9/$(TARGET).elf
+ 	@ndstool	-c $@ -7 arm7/$(TARGET).elf -9 arm9/$(TARGET).elf \
+-	-h 0x200 -t nrio-banner.bin
++	-h 0x200 $(XULU_BANNER)
+ 	@dlditool ../nrio.dldi $@
+ 
+ data:

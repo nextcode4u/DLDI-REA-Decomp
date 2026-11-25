@@ -1,0 +1,62 @@
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -21,6 +21,7 @@
+ #include "nds_card.h"
+ #include "launch_engine.h"
+ #include "srl-dump.h"
++#include "file-browser.h"
+ extern "C" const u8 usb_mount_bin[] __attribute__((weak));
+ extern "C" const u8 usb_mount_bin_end[] __attribute__((weak));
+ 
+@@ -841,7 +842,7 @@
+ 
+ enum class MenuAction {
+ 	Back,
+-	Utility, Dldi,
++	Utility, Dldi, FileBrowser,
+ 	DumpMain, DumpStage2, DumpUdisk, TestDump,
+ 	BootCart, BootGm9, Usb,
+ 	CheckCart, SaveBlock0, Advanced, BuildUpdate,
+@@ -1035,6 +1036,7 @@
+ 
+ static MenuAction MainMenu() {
+ 	const MenuItem items[] = {
++		{MenuAction::FileBrowser, "File Browser"},
+ 		{MenuAction::Utility, "Utility Menu"},
+ 		{MenuAction::DumpMain, "Dump main SRL", rawNandAvailable},
+ 		{MenuAction::DumpStage2, srlLayout.bootleg ? "Dump bootleg SRL" : "Dump Stage2 SRL", srlLayout.stage2_table != 0},
+@@ -1130,6 +1132,14 @@
+ 			return 0;
+ 		}
+ 		switch (MainMenu()) {
++			case MenuAction::FileBrowser: {
++				const bool slot2 = !wasDSi && GetSlot2Storage();
++				nrio_file_browser(wasDSi && sdMounted, slot2 && fatMounted,
++				                  !wasDSi && !slot2 && fatMounted);
++				if (WarningPosted) LoadTopScreenDebugSplash();
++				else LoadTopScreenSplash();
++				break;
++			}
+ 			case MenuAction::Utility:
+ 				RunUtilityMenu();
+ 				if (!ErrorState) RefreshSrlLayout();
+--- a/arm9/source/ui.cpp
++++ b/arm9/source/ui.cpp
+@@ -24,6 +24,7 @@
+ 
+ void SelectTopConsole() { consoleSelect(&tpConsole); }
+ void SelectBotConsole() { consoleSelect(&btConsole); }
++int BottomConsoleRow() { return btConsole.windowY; }
+ 
+ void consoleClearTop(bool KeepTopSelected) {
+ 	SelectTopConsole();
+--- a/arm9/source/ui.h
++++ b/arm9/source/ui.h
+@@ -7,6 +7,7 @@
+ 
+ void SelectTopConsole(void);
+ void SelectBotConsole(void);
++int BottomConsoleRow(void);
+ void consoleClearTop(bool KeepTopSelected);
+ 
+ void PrintToTop(const char* Message, int data, bool clearScreen);

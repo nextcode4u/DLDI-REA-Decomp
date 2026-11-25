@@ -22,12 +22,28 @@ ifeq ($(USB_MOUNT),1)
 CPPFLAGS += -DNRIO_USB_MOUNT
 endif
 ifeq ($(C_ONLY),1)
+ifeq ($(UNIFIED),1)
+ifneq ($(EXPERIMENTAL),)
+$(error Choose either UNIFIED or EXPERIMENTAL)
+endif
+BUILD := build/unified
+CPPFLAGS += -DNRIO_EXPERIMENTAL -DNRIO_USB_MOUNT -DNRIO_UNIFIED
+ASFLAGS += --defsym NRIO_UNIFIED=1
+else ifeq ($(EXPERIMENTAL),1)
+BUILD := build/experimental
+CPPFLAGS += -DNRIO_EXPERIMENTAL -DNRIO_USB_MOUNT
+ASFLAGS += --defsym NRIO_EXPERIMENTAL=1
+else
 BUILD := build
+endif
 ASM_SOURCES := source/dldi/header.S source/system/data.S
 $(BUILD)/ftl/block_tables.o: CPPFLAGS += -DNRIO_C_ONLY
 # Keep the page dispatcher's separate address loads for each switch case.
 $(BUILD)/nand/page_ops.o: CFLAGS += -fno-gcse
 else
+ifneq ($(filter 1,$(EXPERIMENTAL) $(UNIFIED)),)
+$(error EXPERIMENTAL and UNIFIED require C_ONLY=1)
+endif
 BUILD := build/matching
 C_SOURCES := $(filter-out $(C_RECONSTRUCTION),$(C_SOURCES))
 endif

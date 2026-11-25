@@ -31,6 +31,9 @@ NRIO_ROUTINE(3fc0) int nrio_write_sector_with_mapping(void)
              nrio_block_in_current_zone = (u8)value, value == 0)) {
             nrio_current_zone = nrio_current_zone + 1;
             nrio_load_zone();
+#ifdef NRIO_UNIFIED
+            if (!nrio_sector_capacity) return 9;
+#endif
             goto zone_ready;
         }
     continue_request:
@@ -50,6 +53,9 @@ NRIO_ROUTINE(3fc0) int nrio_write_sector_with_mapping(void)
         if ((u32)nrio_current_zone != (nrio_logical_block_index / 0x3e & 0xffff)) {
             nrio_current_zone = nrio_zone_index;
             nrio_load_zone();
+#ifdef NRIO_UNIFIED
+            if (!nrio_sector_capacity) return 9;
+#endif
         zone_ready:
             if (nrio_new_sector_request == 0)
                 goto continue_request;

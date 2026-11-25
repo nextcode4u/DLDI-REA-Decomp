@@ -3,6 +3,32 @@
 extern int nrio_read_nand_id(u32 *id);
 extern int nrio_init_nand_geometry(u32 block_size, u16 blocks, u32 data_base, u32 mode);
 
+#ifdef NRIO_EXPERIMENTAL
+#include "geometry.h"
+
+NRIO_ROUTINE(34ec) bool nrio_ftl_init(u32 mode)
+{
+    u32 id, previous = 0;
+    struct nrio_geometry geometry;
+    nrio_sector_capacity = 0;
+#ifdef NRIO_UNIFIED
+    nrio_cached_logical_page = ~0u;
+    nrio_bus_fault = 0;
+#endif
+    for (unsigned attempt = 0; attempt < 4; ++attempt) {
+        if (!nrio_read_nand_id(&id) || !nrio_decode_geometry(id, &geometry)) {
+            previous = 0;
+            continue;
+        }
+        if (id == previous)
+            return nrio_init_nand_geometry(geometry.pages_per_block << 11, geometry.data_blocks,
+                                           geometry.reserved_bytes, mode) == 0;
+        previous = id;
+    }
+    return false;
+}
+
+#else
 NRIO_ROUTINE(34ec) void nrio_ftl_init(u32 mode)
 {
     union {
@@ -69,3 +95,5 @@ NRIO_ROUTINE(34ec) void nrio_ftl_init(u32 mode)
         return;
     }
 }
+
+#endif

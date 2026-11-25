@@ -1,0 +1,110 @@
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -81,7 +81,6 @@
+ DTCM_DATA volatile bool sdMounted = false;
+ DTCM_DATA volatile bool wasDSi = false;
+ DTCM_DATA volatile bool ntrMode = false;
+-DTCM_DATA volatile bool dldiWarned = false;
+ DTCM_DATA volatile bool uDiskFileFound = false;
+ DTCM_DATA volatile bool WarningPosted = false;
+ DTCM_DATA volatile bool UpdateProgressText = false;
+@@ -1020,39 +1019,36 @@
+ 	RunUtilityMenu(root);
+ }
+ 
+-static void RunDldiMenu() {
++static bool PrepareDldiAction() {
++	if (nrioDLDIMounted) return true;
+ 	consoleClear();
+-	if (!dldiWarned) {
+-		puts("Restart required after entering");
+-		puts("the DLDI Menu.\n");
+-		puts("A Continue  B Back");
+-		for (;;) {
+-			swiWaitForVBlank();
+-			scanKeys();
+-			const u32 keys = keysDown();
+-			if (keys & KEY_B) return;
+-			if (keys & KEY_A) break;
+-		}
+-		dldiWarned = true;
+-	}
+-	if (WarningPosted) consoleClearTop(false);
+-	LoadTopScreenDLDISplash();
+-	swiWaitForVBlank();
+-	if (!ntrMode) {
+-		ntrMode = true;
+-		SetSCFG();
++	puts("This action needs DLDI mode.");
++	puts("After switching, B exits to");
++	puts("the system menu.\n");
++	nrio_button_legend("A Continue  B Cancel", nullptr);
++	for (;;) {
++		swiWaitForVBlank();
++		scanKeys();
++		const u32 keys = keysDown();
++		if (keys & KEY_B) return false;
++		if (keys & KEY_A) break;
+ 	}
++
++	ntrMode = true;
++	SetSCFG();
++	nrioDLDIMounted = fatInitDefault();
+ 	if (!nrioDLDIMounted) {
+-		nrioDLDIMounted = fatInitDefault();
+-		if (!nrioDLDIMounted) {
+-			DoError("DLDI Init Failed!\n");
+-			return;
+-		}
+-		if (!uDiskFileFound) uDiskFileFound = (access("sd:/nrioFiles/xBootStrap.nds", F_OK) == 0);
++		DoError("DLDI Init Failed!\n");
++		return false;
+ 	}
++	if (!uDiskFileFound) uDiskFileFound = (access("sd:/nrioFiles/xBootStrap.nds", F_OK) == 0);
+ 	struct statvfs st;
+ 	if (!cartSize && statvfs("fat:/", &st) == 0) cartSize = (st.f_bsize * st.f_blocks) / 1024;
++	return true;
++}
+ 
++static void RunDldiMenu() {
++	LoadTopScreenDLDISplash();
+ 	const MenuItem items[] = {
+ 		{MenuAction::BootCart, "Boot cart menu"},
+ 		{MenuAction::DumpFatSector, "Dump FAT sector 0"},
+@@ -1061,13 +1057,19 @@
+ 		{MenuAction::WriteFatImage, "Write default FAT image"},
+ 	};
+ 	while (!ErrorState) {
+-		switch (PickAction("DLDI Menu", items, true)) {
++		const MenuAction action = PickAction("DLDI Menu", items, ntrMode);
++		if (action == MenuAction::Back) {
++			if (ntrMode) ErrorState = true;
++			return;
++		}
++		if (!PrepareDldiAction()) continue;
++		switch (action) {
+ 			case MenuAction::BootCart: DoCartBoot(); break;
+ 			case MenuAction::DumpFatSector: DoSector0Dump(); break;
+ 			case MenuAction::DumpFatImage: DoImageDump(); break;
+ 			case MenuAction::RestoreFatSector: DoSector0Restore(); break;
+ 			case MenuAction::WriteFatImage: DoImageRestore(); break;
+-			default: ErrorState = true; break;
++			default: break;
+ 		}
+ 	}
+ }
+@@ -1183,7 +1185,13 @@
+ 				if (!ErrorState) RefreshSrlLayout();
+ 				if (!WarningPosted) LoadTopScreenSplash();
+ 				break;
+-			case MenuAction::Dldi: RunDldiMenu(); break;
++			case MenuAction::Dldi:
++				RunDldiMenu();
++				if (!ErrorState) {
++					if (WarningPosted) LoadTopScreenDebugSplash();
++					else LoadTopScreenSplash();
++				}
++				break;
+ 			case MenuAction::DumpMain: DoSrlDump("stage1.bin"); break;
+ 			case MenuAction::DumpStage2:
+ 				DoSrlDump(srlLayout.bootleg ? "bootleg.nds" : "safe-original.nds", srlLayout.stage2_table);

@@ -1,0 +1,116 @@
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -534,83 +534,6 @@
+ 	}
+ }
+ 
+-void DoSector0Dump() {
+-	consoleClear();
+-	DoWait(60);
+-	printf("About to dump FAT sector 0.\n\n");
+-	printf("Press [A] to continue.\n\n");
+-	printf("Press [B] to abort.\n");
+-	while(1) {
+-		swiWaitForVBlank();
+-		scanKeys();
+-		if(keysDown() & KEY_A)break;
+-		if(keysDown() & KEY_B)return;
+-	}
+-	FILE *dest = fopen("sd:/nrioFiles/nrio_fatsector0.bin", "wb");
+-	if (!dest) { DoError("ERROR: Failed to create file!"); return; }
+-	io_dldi_data->ioInterface.readSectors(0, 1, ReadBuffer);
+-	fwrite(ReadBuffer, 0x200, 1, dest);
+-	fclose(dest);
+-	consoleClear();
+-	printf("Sector 0 dump finished!\n\n");
+-	printf("Press [A] to return to DLDI menu\n");
+-	printf("Press [B] to exit\n");
+-	while(1) {
+-		swiWaitForVBlank();
+-		scanKeys();
+-		if(keysDown() & KEY_A)return;
+-		if(keysDown() & KEY_B) { 
+-			ErrorState = true;
+-			return;
+-		}
+-	}
+-	// fseek(dest, 0x200, SEEK_SET);
+-	// if ((u64)fsize > driveSizeFree("fat:/")) { }
+-}
+-
+-void DoSector0Restore() {
+-	consoleClear();
+-	DoWait(60);
+-	printf("About to write FAT sector 0.\n\n");
+-	puts("Back up this cart before writes\nwhenever possible.\n");
+-	printf("Press [A] to continue.\n\n");
+-	printf("Press [B] to abort.\n");
+-	while(1) {
+-		swiWaitForVBlank();
+-		scanKeys();
+-		if(keysDown() & KEY_A)break;
+-		if(keysDown() & KEY_B)return;
+-	}
+-	if (access("sd:/nrioFiles/nrio_fatsector0.bin", F_OK) != 0) {
+-		DoError("ERROR: Failed to find\nnrio_fatsector0.bin!"); 
+-		return;
+-	}
+-	FILE *src = fopen("sd:/nrioFiles/nrio_fatsector0.bin", "rb");
+-	if (!src) { DoError("ERROR: Failed to open\nnrio_fatsector0.bin!"); return; }
+-	fseek(src, 0, SEEK_END);
+-	u32 fSectorSize = (ftell(src) / 0x200);
+-	fseek(src, 0, SEEK_SET);
+-	if (fSectorSize != 1) { DoError("ERROR: nrio_fatsector0.bin has incorrect size!"); return; }
+-	fread(ReadBuffer, 1, 0x200, src);
+-	io_dldi_data->ioInterface.readSectors(0, 1, ReadBuffer);
+-	fclose(src);
+-	consoleClear();
+-	printf("Sector 0 write finished!\n");
+-	printf("Press [A] to return to DLDI menu\n\n");
+-	printf("Press [B] to exit\n");
+-	while(1) {
+-		swiWaitForVBlank();
+-		scanKeys();
+-		if(keysDown() & KEY_A)return;
+-		if(keysDown() & KEY_B) { 
+-			ErrorState = true;
+-			return;
+-		}
+-	}
+-	// fseek(dest, 0x200, SEEK_SET);
+-	// if ((u64)fsize > driveSizeFree("fat:/")) { }
+-}
+-
+ void DoTestDump() {
+ 	consoleClear();
+ 	DoWait(60);
+@@ -760,6 +683,7 @@
+ extern "C" void nrioTool_sd_recovery(int action, const char *root);
+ #include "udisk-setup.h"
+ #include "format-origin.h"
++#include "sector-zero.h"
+ 	
+ static const char *RecoveryStorageRoot() {
+ 	if (wasDSi) return sdMounted ? "sd:/nrioFiles" : nullptr;
+@@ -1008,12 +932,19 @@
+ 			if (ntrMode) ErrorState = true;
+ 			return;
+ 		}
++		if (action == MenuAction::DumpFatSector || action == MenuAction::RestoreFatSector) {
++			if (nrioDLDIMounted) {
++				DoError("Exit DLDI mode and relaunch\n"
++				        "before accessing FAT sector 0.", false);
++			} else {
++				nrioTool_sector0_action(RecoveryStorageRoot(), action == MenuAction::RestoreFatSector);
++			}
++			continue;
++		}
+ 		if (!PrepareDldiAction()) continue;
+ 		switch (action) {
+ 			case MenuAction::BootCart: DoCartBoot(); break;
+-			case MenuAction::DumpFatSector: DoSector0Dump(); break;
+ 			case MenuAction::DumpFatImage: DoImageDump(); break;
+-			case MenuAction::RestoreFatSector: DoSector0Restore(); break;
+ 			default: break;
+ 		}
+ 	}

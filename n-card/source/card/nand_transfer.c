@@ -6,15 +6,24 @@ extern void nrio_command_55(u32 pages);
 extern void nrio_command_52(u32 column);
 extern void nrio_wait_nand(void);
 
+#ifdef NRIO_UNIFIED
+#define WAIT_FOR_WRITE_WORD() do { if (!nrio_wait_card_data()) return; } while (0)
+#else
+#define WAIT_FOR_WRITE_WORD() wait_fifo_word()
 static inline void wait_fifo_word(void)
 {
     while ((CARD_CR2 & CARD_DATA_READY) == 0) {
     }
 }
+#endif
 
 static inline u32 read_fifo_word(void)
 {
+#ifdef NRIO_UNIFIED
+    if (!nrio_wait_card_data()) return 0;
+#else
     wait_fifo_word();
+#endif
     return CARD_DATA_RD;
 }
 
@@ -35,6 +44,9 @@ NRIO_ROUTINE(0a5c) void nrio_read_nand_sector_with_ecc(u8 *buffer, u32 sector, u
     nrio_send_nand_command(0x05);
     nrio_command_52(sector << 9);
     nrio_send_nand_command(0xe0);
+#ifdef NRIO_UNIFIED
+    if (nrio_bus_fault) return;
+#endif
     CARD_COMMAND[0] = 0xd0;
     CARD_COMMAND[1] = 0;
     CARD_CR2 = 0xa1000000;
@@ -70,6 +82,9 @@ NRIO_ROUTINE(0a5c) void nrio_read_nand_sector_with_ecc(u8 *buffer, u32 sector, u
             odd = !odd;
         }
     }
+#ifdef NRIO_UNIFIED
+    if (!nrio_wait_card_idle()) return;
+#endif
     finish_ecc(ecc, all, bit0, bit1, bit2, row, odd);
 }
 
@@ -83,6 +98,9 @@ NRIO_ROUTINE(0dc8) void nrio_write_nand_sector_with_ecc(const u8 *buffer, u32 se
         nrio_command_55(0);
     }
 
+#ifdef NRIO_UNIFIED
+    if (nrio_bus_fault) return;
+#endif
     const u8 *input = buffer;
     CARD_COMMAND[0] = 0xd3;
     CARD_COMMAND[1] = 0;
@@ -94,35 +112,35 @@ NRIO_ROUTINE(0dc8) void nrio_write_nand_sector_with_ecc(const u8 *buffer, u32 se
     u32 all = 0, bit0 = 0, bit1 = 0, bit2 = 0, row = 0;
     bool odd = false;
     for (u32 i = 0; i < 16; ++i) {
-        wait_fifo_word();
+        WAIT_FOR_WRITE_WORD();
         CARD_DATA_RD = word;
         word = load_word(&input);
         u32 w0 = *source++;
-        wait_fifo_word();
+        WAIT_FOR_WRITE_WORD();
         CARD_DATA_RD = word;
         word = load_word(&input);
         u32 w1 = *source++;
-        wait_fifo_word();
+        WAIT_FOR_WRITE_WORD();
         CARD_DATA_RD = word;
         word = load_word(&input);
         u32 w2 = *source++;
-        wait_fifo_word();
+        WAIT_FOR_WRITE_WORD();
         CARD_DATA_RD = word;
         word = load_word(&input);
         u32 w3 = *source++;
-        wait_fifo_word();
+        WAIT_FOR_WRITE_WORD();
         CARD_DATA_RD = word;
         word = load_word(&input);
         u32 w4 = *source++;
-        wait_fifo_word();
+        WAIT_FOR_WRITE_WORD();
         CARD_DATA_RD = word;
         word = load_word(&input);
         u32 w5 = *source++;
-        wait_fifo_word();
+        WAIT_FOR_WRITE_WORD();
         CARD_DATA_RD = word;
         word = load_word(&input);
         u32 w6 = *source++;
-        wait_fifo_word();
+        WAIT_FOR_WRITE_WORD();
         CARD_DATA_RD = word;
         word = load_word(&input);
         u32 w7 = *source++;
@@ -137,5 +155,8 @@ NRIO_ROUTINE(0dc8) void nrio_write_nand_sector_with_ecc(const u8 *buffer, u32 se
             odd = !odd;
         }
     }
+#ifdef NRIO_UNIFIED
+    if (!nrio_wait_card_idle()) return;
+#endif
     finish_ecc(ecc, all, bit0, bit1, bit2, row, odd);
 }

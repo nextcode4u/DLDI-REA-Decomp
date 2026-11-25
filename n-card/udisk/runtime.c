@@ -101,6 +101,141 @@ bool udisk_build_volume_boot_sector(uint32_t sectors, uint8_t boot_sector[512])
     return true;
 }
 
+bool udisk_format_volume(const struct udisk_format_io *io, uint32_t sectors,
+                         uint8_t workspace[UDISK_FORMAT_WORKSPACE_BYTES])
+{
+    uint8_t boot_sector[512];
+    if (!io || !io->write_sectors || !workspace ||
+        !udisk_build_volume_boot_sector(sectors, boot_sector))
+        return false;
+
+    enum { CHUNK_SECTORS = UDISK_FORMAT_WORKSPACE_BYTES / 512 };
+    uint32_t reserved = boot_sector[14] | (uint32_t)boot_sector[15] << 8;
+    uint32_t fat_sectors = boot_sector[22] | (uint32_t)boot_sector[23] << 8;
+    uint32_t root = reserved + 2 * fat_sectors;
+    if (root > sectors || CHUNK_SECTORS > sectors - root)
+        return false;
+
+    /* Stock writes both FATs in 64 KiB chunks, followed by the root
+       directory and boot sector. The first chunk seeds the reserved entries. */
+    for (size_t i = 0; i < UDISK_FORMAT_WORKSPACE_BYTES; ++i) workspace[i] = 0;
+    for (unsigned copy = 0; copy < 2; ++copy) {
+        uint32_t start = reserved + copy * fat_sectors;
+        workspace[0] = boot_sector[21];
+        workspace[1] = 0xff;
+        workspace[2] = 0xff;
+        workspace[3] = boot_sector[58] == '6' ? 0xff : 0;
+        for (uint32_t offset = 0; offset <= fat_sectors; offset += CHUNK_SECTORS) {
+            if (!io->write_sectors(io->context, start + offset, CHUNK_SECTORS, workspace))
+                return false;
+            workspace[0] = workspace[1] = workspace[2] = workspace[3] = 0;
+        }
+    }
+    return io->write_sectors(io->context, root, CHUNK_SECTORS, workspace) &&
+           io->write_sectors(io->context, 0, 1, boot_sector);
+}
+
+bool udisk_ftl_metadata_ranges(uint32_t data_base, uint32_t erase_bytes,
+                               struct udisk_ftl_metadata *metadata)
+{
+    const uint32_t region = 0x100000;
+    if (!metadata || (erase_bytes != 0x20000 && erase_bytes != 0x40000) ||
+        data_base < 2 * region || data_base % erase_bytes)
+        return false;
+    *metadata = (struct udisk_ftl_metadata){
+        data_base - 2 * region, data_base - region, data_base
+    };
+    return true;
+}
+
+static void store_physical_entry(uint8_t *entry, uint32_t address)
+{
+    entry[0] = (uint8_t)(address >> 24);
+    entry[1] = (uint8_t)(address >> 16);
+}
+
+bool udisk_encode_physical_table(uint32_t data_base, uint32_t erase_bytes,
+                                 const uint16_t *blocks, size_t count,
+                                 uint8_t table[UDISK_FTL_TABLE_BYTES])
+{
+    struct udisk_ftl_metadata metadata;
+    const size_t entries = UDISK_FTL_TABLE_BYTES / 2;
+    if (!table || count > entries || (count && !blocks) ||
+        !udisk_ftl_metadata_ranges(data_base, erase_bytes, &metadata))
+        return false;
+
+    for (size_t i = 0; i < entries; ++i) {
+        uint32_t block = i < count ? blocks[i] : (uint32_t)i;
+        store_physical_entry(table + 2 * i, metadata.data_begin + block * erase_bytes);
+    }
+    return true;
+}
+
+static bool bad_block(const uint8_t *bitmap, uint32_t block)
+{
+    return (bitmap[block / 8] & (1u << (block % 8))) != 0;
+}
+
+bool udisk_prepare_physical_table(uint32_t data_base, uint32_t erase_bytes,
+                                  uint16_t physical_blocks,
+                                  const uint8_t bad[UDISK_FTL_BAD_BITMAP_BYTES],
+                                  uint8_t table[UDISK_FTL_TABLE_BYTES],
+                                  uint32_t *logical_sectors)
+{
+    const size_t entries = UDISK_FTL_TABLE_BYTES / 2;
+    const uint32_t blocks_per_zone = 64, usable_per_zone = 62;
+    if (!bad || !logical_sectors || physical_blocks >= entries ||
+        (uint64_t)data_base + (uint64_t)physical_blocks * erase_bytes > UINT32_MAX + UINT64_C(1) ||
+        !udisk_encode_physical_table(data_base, erase_bytes, NULL, 0, table))
+        return false;
+
+    uint32_t end = physical_blocks;
+    for (uint32_t slot = 0; slot < end; ++slot) {
+        if (!bad_block(bad, slot)) continue;
+        do {
+            --end;
+        } while (end > slot && bad_block(bad, end));
+        if (end > slot)
+            store_physical_entry(table + 2 * slot, data_base + end * erase_bytes);
+    }
+    const uint32_t zones = end / blocks_per_zone;
+    if (!zones) return false;
+
+    /* Stock stores the physical block count in its final table entry. */
+    store_physical_entry(table + UDISK_FTL_TABLE_BYTES - 2, data_base + end * erase_bytes);
+    *logical_sectors = zones * usable_per_zone * (erase_bytes / 512) -
+                       usable_per_zone * (erase_bytes / 2048);
+    return true;
+}
+
+static bool write_metadata_range(const struct udisk_metadata_io *io,
+                                 uint32_t begin, uint32_t end, uint32_t erase_bytes,
+                                 uint8_t marker, const uint8_t *data, size_t bytes)
+{
+    for (uint32_t address = begin; address < end; address += erase_bytes) {
+        const enum udisk_metadata_write_result result =
+            io->replace_block(io->context, address, marker, data, bytes);
+        if (result != UDISK_METADATA_RETRY)
+            return result == UDISK_METADATA_VERIFIED;
+    }
+    return false;
+}
+
+bool udisk_write_ftl_metadata(const struct udisk_metadata_io *io,
+                               uint32_t data_base, uint32_t erase_bytes,
+                               const uint8_t bad[UDISK_FTL_BAD_BITMAP_BYTES],
+                               const uint8_t table[UDISK_FTL_TABLE_BYTES])
+{
+    struct udisk_ftl_metadata metadata;
+    if (!io || !io->replace_block || !bad || !table ||
+        !udisk_ftl_metadata_ranges(data_base, erase_bytes, &metadata))
+        return false;
+    return write_metadata_range(io, metadata.bad_block_begin, metadata.physical_table_begin,
+                                erase_bytes, 0xaa, bad, UDISK_FTL_BAD_BITMAP_BYTES) &&
+           write_metadata_range(io, metadata.physical_table_begin, metadata.data_begin,
+                                erase_bytes, 0xab, table, UDISK_FTL_TABLE_BYTES);
+}
+
 /* Installed runtime ARM9 0x020008E4. File lookup and cluster translation
    use the mounted FAT volume. The resulting map is kept in host memory. */
 enum udisk_launch_result udisk_build_launch_map(const struct udisk_launch_io *io,

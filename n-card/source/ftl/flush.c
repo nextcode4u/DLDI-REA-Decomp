@@ -127,6 +127,9 @@ NRIO_ROUTINE(3e5c) u32 nrio_sector_nand_address(u32 offset)
     if (zone != nrio_current_zone) {
         nrio_current_zone = zone;
         nrio_load_zone();
+#ifdef NRIO_UNIFIED
+        if (!nrio_sector_capacity) return 0;
+#endif
     }
 
     if (nrio_pending_logical_block == block_in_zone && nrio_flush_block() != 0) {

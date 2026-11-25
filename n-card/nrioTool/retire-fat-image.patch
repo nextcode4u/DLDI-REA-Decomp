@@ -1,0 +1,150 @@
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -534,73 +534,6 @@
+ 	}
+ }
+ 
+-void DoImageRestore() {
+-	consoleClear();
+-	DoWait(60);
+-	printf("About to write default fat image\n\n");
+-	iprintf("Target Cart Capacity: %d\n\n", cartSize);
+-	const char* FilePath = "NOTSUPPORTED";
+-	if (cartSize == 2011584)FilePath = "sd:/nrioFiles/nrio_basicimage_2011584_16g.img";
+-	if (cartSize == 1995712)FilePath = "sd:/nrioFiles/nrio_basicimage_1995712_16g.img";
+-	if (access("sd:/nrioFiles/nrio_customimage.img", F_OK) == 0)FilePath = "sd:/nrioFiles/nrio_customimage.img"; // if present, will write this file over any other.
+-	if (access(FilePath, F_OK) != 0 && nitroFSMounted) {
+-		if (cartSize == 2011584)FilePath = "nitro:/nrio_basicimage_2011584_16g.img";
+-		if (cartSize == 1995712)FilePath = "nitro:/nrio_basicimage_1995712_16g.img";
+-	}
+-	if (!memcmp(FilePath, "NOTSUPPORTED", 12)) {
+-		printf("\nERROR: Cart capacity not\nsupported!\n");
+-		printf("\nPress [A] to abort.\n");
+-		while(1) {
+-			swiWaitForVBlank();
+-			scanKeys();
+-			if(keysDown() & KEY_A)return;
+-		}
+-	}
+-	puts("Back up this cart before writes\nwhenever possible.\n");
+-	printf("\nPress [A] to continue.\n\n");
+-	printf("Press [B] to abort.\n");
+-	while(1) {
+-		swiWaitForVBlank();
+-		scanKeys();
+-		if(keysDown() & KEY_A)break;
+-		if(keysDown() & KEY_B)return;
+-	}
+-	FILE *src = fopen(FilePath, "rb");
+-	if (!src) { DoError("ERROR: Failed to find or open\nnrio_basicimage!\n"); return; }
+-	fseek(src, 0, SEEK_END);
+-	int fileSize = (int)(ftell(src) / 0x800) + 4;
+-	u32 fSize = ftell(src);
+-	fseek(src, 0, SEEK_SET);
+-	ProgressTracker = (int)fileSize;
+-	textBuffer = "Writing FAT image to cart.\nPlease Wait...\n\n\n";
+-	textProgressBuffer = "Blocks Remaining: ";
+-	for (int i = 0; i < fileSize; i++){
+-		fseek(src, (i * 0x800), SEEK_SET);
+-		fread(FATBuffer, 1, 0x800, src);
+-		io_dldi_data->ioInterface.writeSectors((i * 4), 4, FATBuffer);
+-		if (ProgressTracker < 4)ProgressTracker = 0;
+-		ProgressTracker--;
+-		UpdateProgressText = true;
+-		if (fSize < (u32)(i * 0x800))break;
+-	}
+-	while(UpdateProgressText)swiWaitForVBlank();
+-	fclose(src);
+-	consoleClear();
+-	printf("FAT image write finished!\n\n");
+-	printf("Press [A] to return to DLDI menu\n\n");
+-	printf("Press [B] to exit\n");
+-	while(1) {
+-		swiWaitForVBlank();
+-		scanKeys();
+-		if(keysDown() & KEY_A) return;
+-		if(keysDown() & KEY_B) { 
+-			ErrorState = true;
+-			return;
+-		}
+-	}
+-	// if ((u64)fsize > driveSizeFree("fat:/")) { }
+-}
+-
+ void DoSector0Dump() {
+ 	consoleClear();
+ 	DoWait(60);
+@@ -826,6 +759,7 @@
+ 	
+ extern "C" void nrioTool_sd_recovery(int action, const char *root);
+ #include "udisk-setup.h"
++#include "format-origin.h"
+ 	
+ static const char *RecoveryStorageRoot() {
+ 	if (wasDSi) return sdMounted ? "sd:/nrioFiles" : nullptr;
+@@ -859,7 +793,7 @@
+ 	CheckCart, SaveBlock0, Advanced, BuildUpdate,
+ 	PatchSafeMode, BypassSafeMode, InstallBanner, RestoreArm7, RestoreBlock0, ReplaceSafeMode, RepairUdisk, UdiskSetup, QuickFormat, FullFormat,
+ 	InstallUdisk, InstallXulu, SwitchXulu, CopyXMenu, RemoveUpdater,
+-	DumpFatSector, RestoreFatSector, DumpFatImage, WriteFatImage,
++	DumpFatSector, RestoreFatSector, DumpFatImage, FormatHelp,
+ };
+ 
+ struct MenuItem {
+@@ -935,10 +869,15 @@
+ 	else DoStorageRecovery(action);
+ }
+ 
++static bool launchedFromSd;
++
+ static void RunUdiskSetupMenu(const char *backupRoot) {
++	const bool canFormat = nrio_can_format(launchedFromSd, wasDSi && sdMounted,
++	                                       !wasDSi && GetSlot2Storage(), fatMounted);
+ 	const MenuItem items[] = {
+-		{MenuAction::QuickFormat, "Quick Format N-Card"},
+-		{MenuAction::FullFormat, "Full Format N-Card"},
++		{MenuAction::QuickFormat, "Quick Format N-Card", canFormat},
++		{MenuAction::FullFormat, "Full Format N-Card", canFormat},
++		{MenuAction::FormatHelp, "Format unavailable", !canFormat},
+ 		{MenuAction::CheckCart, "Check Cart", !backupRoot},
+ 		{MenuAction::InstallUdisk, "Install stock uDisk 1.45"},
+ 		{MenuAction::InstallXulu, "Set up XuluMenu"},
+@@ -950,6 +889,12 @@
+ 		switch (PickAction("uDisk setup", items)) {
+ 			case MenuAction::QuickFormat: nrioTool_quick_format(backupRoot); break;
+ 			case MenuAction::FullFormat: nrioTool_full_format(backupRoot); break;
++			case MenuAction::FormatHelp:
++				DoError("Format needs a separate launch.\n"
++				        "Use DSi SD or a Slot-2 device.\n"
++				        "Slot-1 or unverified launch.\n"
++				        "No changes made.", false);
++				break;
+ 			case MenuAction::CheckCart: nrioTool_sd_recovery(5, backupRoot); break;
+ 			case MenuAction::InstallUdisk: nrioTool_sd_recovery(8, backupRoot); break;
+ 			case MenuAction::InstallXulu: nrioTool_udisk_setup(NRIO_UDISK_XULU_FRESH, backupRoot); break;
+@@ -1056,7 +1001,6 @@
+ 		{MenuAction::DumpFatSector, "Dump FAT sector 0"},
+ 		{MenuAction::DumpFatImage, "Dump FAT image"},
+ 		{MenuAction::RestoreFatSector, "Restore FAT sector 0"},
+-		{MenuAction::WriteFatImage, "Write default FAT image"},
+ 	};
+ 	while (!ErrorState) {
+ 		const MenuAction action = PickAction("DLDI Menu", items, ntrMode);
+@@ -1070,7 +1014,6 @@
+ 			case MenuAction::DumpFatSector: DoSector0Dump(); break;
+ 			case MenuAction::DumpFatImage: DoImageDump(); break;
+ 			case MenuAction::RestoreFatSector: DoSector0Restore(); break;
+-			case MenuAction::WriteFatImage: DoImageRestore(); break;
+ 			default: break;
+ 		}
+ 	}
+@@ -1111,7 +1054,8 @@
+ 	}
+ }
+ 
+-int main() {
++int main(int argc, char **argv) {
++	launchedFromSd = argc > 0 && argv && nrio_sd_launch_path(argv[0]);
+ 	scanKeys();
+ 	if(keysDown() & KEY_B)autoBootCart = true;
+ 	wasDSi = isDSiMode();

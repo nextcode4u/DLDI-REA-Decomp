@@ -33,12 +33,18 @@ typedef u32 NandPageWord __attribute__((may_alias));
 NRIO_ROUTINE(195c) void nrio_page_operation(u32 operation)
 {
     u8 ecc[4];
+#ifdef NRIO_UNIFIED
+    if (nrio_bus_fault) return;
+#endif
 
     /* Case order reproduces the original dispatcher layout under GCC 4.1.1. */
     switch (operation) {
     case NRIO_PAGE_STAGE_SECTOR:
         nrio_read_nand_sector_with_ecc((u8 *)nrio_page_buffer + nrio_sector_in_page * 512,
                                       nrio_sector_in_page, ecc);
+#ifdef NRIO_UNIFIED
+        if (nrio_bus_fault) return;
+#endif
         nrio_correct_ecc(&nrio_spare[nrio_sector_in_page * 16 + 8], ecc,
                          (u8 *)nrio_page_buffer + nrio_sector_in_page * 512);
         break;
@@ -93,6 +99,9 @@ NRIO_ROUTINE(195c) void nrio_page_operation(u32 operation)
         break;
     case NRIO_PAGE_READ_SECTOR_ECC:
         nrio_read_nand_sector_with_ecc(nrio_read_buffer, nrio_sector_in_page, ecc);
+#ifdef NRIO_UNIFIED
+        if (nrio_bus_fault) return;
+#endif
         nrio_correct_ecc(&nrio_spare[nrio_sector_in_page * 16 + 8], ecc, nrio_read_buffer);
         break;
     case NRIO_PAGE_PAD_SECTOR: {

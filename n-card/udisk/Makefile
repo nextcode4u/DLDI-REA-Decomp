@@ -3,7 +3,7 @@ AR ?= ar
 BUILD ?= build
 CFLAGS ?= -O2 -g
 
-OBJECTS := $(addprefix $(BUILD)/,updater.o payload.o runtime.o)
+OBJECTS := $(addprefix $(BUILD)/,updater.o payload.o runtime.o format-native.o)
 
 .PHONY: all
 all: $(BUILD)/libudisk.a

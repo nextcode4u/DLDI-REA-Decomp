@@ -91,9 +91,15 @@ NRIO_ROUTINE(1cb8) void nrio_load_physical_block_table(void)
 {
     nrio_set_nand_address(nrio_block_table_address + ((nrio_current_zone >> 4) << 11));
     nrio_page_operation(1);
+#ifdef NRIO_UNIFIED
+    if (nrio_bus_fault) return;
+#endif
     if (nrio_check_spare_markers() == 0 && nrio_spare[11] == 0xab) {
         nrio_sector_in_page = (nrio_current_zone & 15) >> 2;
         nrio_page_operation(3);
+#ifdef NRIO_UNIFIED
+        if (nrio_bus_fault) return;
+#endif
 
         u32 *blocks = nrio_physical_block_table;
         const u16 *encoded = nrio_page_buffer + (nrio_current_zone & 15) * 64;
@@ -101,10 +107,34 @@ NRIO_ROUTINE(1cb8) void nrio_load_physical_block_table(void)
         do {
             u16 entry = encoded[i];
             u32 offset = (u32)(u16)((entry >> 8) | (entry << 8)) << 16;
+#ifdef NRIO_UNIFIED
+            const u32 erase_size = (u32)nrio_pages_per_block << 11;
+            blocks[i] = offset < nrio_nand_data_base || (offset & (erase_size - 1)) ?
+                        ~0u : (offset - nrio_nand_data_base) / erase_size;
+#else
             blocks[i] = (offset - nrio_nand_data_base) / (nrio_pages_per_block << 11);
+#endif
         } while (++i != 64);
     }
 }
+
+#ifdef NRIO_UNIFIED
+bool nrio_reload_validated_table(void)
+{
+    if (nrio_current_zone < nrio_zone_count) {
+        for (unsigned i = 0; i < 64; ++i) nrio_physical_block_table[i] = ~0u;
+        nrio_load_physical_block_table();
+        bool complete = true;
+        for (unsigned i = 0; i < 64; ++i)
+            if (nrio_physical_block_table[i] == ~0u) { complete = false; break; }
+        if (complete && nrio_map_fingerprint(nrio_physical_block_table) ==
+                        nrio_zone_map_fingerprints[nrio_current_zone]) return true;
+    }
+    /* Stop serving requests until a fresh startup can validate the map. */
+    nrio_sector_capacity = 0;
+    return false;
+}
+#endif
 
 NRIO_ROUTINE(2114) u8 nrio_classify_physical_block(u8 block)
 {
@@ -112,16 +142,26 @@ NRIO_ROUTINE(2114) u8 nrio_classify_physical_block(u8 block)
     do {
         nrio_select_physical_page(block, 0);
         nrio_page_operation(10);
+#ifdef NRIO_UNIFIED
+        if (nrio_bus_fault) return 0xfe;
+#endif
         if (nrio_check_spare_markers() == 0xfe) {
             continue;
         }
         u8 first_marker = nrio_spare[11];
         nrio_select_physical_page(block, nrio_page_in_block_mask);
         nrio_page_operation(10);
+#ifdef NRIO_UNIFIED
+        if (nrio_bus_fault) return 0xfe;
+#endif
         if (nrio_check_spare_markers() == 0xfe) {
             continue;
         }
         u8 last_marker = nrio_spare[11];
+#ifdef NRIO_EXPERIMENTAL
+        if ((first_marker >= 62 && first_marker != 0xff) ||
+            (last_marker >= 62 && last_marker != 0xff)) return 0xfe;
+#endif
         if (first_marker == last_marker) {
             if (first_marker != 0xff) {
                 nrio_logical_block_map[first_marker] = block;
@@ -136,9 +176,14 @@ NRIO_ROUTINE(2114) u8 nrio_classify_physical_block(u8 block)
                 nrio_pending_physical_block = block;
                 return 0xfa;
             }
+#ifdef NRIO_EXPERIMENTAL
+            /* A read-only mount must not clean up duplicate pending blocks. */
+            return 0xfe;
+#else
             if (nrio_retry_block_erase(block) != 0) {
                 return 0xfe;
             }
+#endif
         }
         return 0xff;
     } while (--retry != 0xff);

@@ -8,9 +8,9 @@ fi
 
 mount_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 card=$(CDPATH= cd -- "$mount_dir/../.." && pwd)
+driver="$card/unified/nrio-unified.dldi"
 usb_checkout=$(CDPATH= cd -- "$1" && pwd)
 nriotool=$(CDPATH= cd -- "$2" && pwd)
-: "${DEVKITPRO:?Set DEVKITPRO to the devkitARM r20 SDK root for the USB DLDI build.}"
 
 usb_revision=b9b781bf5deec5096cbc517432878430ac0e58c6
 if [ "$(git -C "$usb_checkout" rev-parse HEAD)" != "$usb_revision" ]; then
@@ -18,7 +18,6 @@ if [ "$(git -C "$usb_checkout" rev-parse HEAD)" != "$usb_revision" ]; then
     exit 2
 fi
 git -C "$usb_checkout" apply --unidiff-zero --check "$mount_dir/usb-app.patch"
-make -C "$card" C_ONLY=1 USB_MOUNT=1 BUILD=build/usb-mount
 git -C "$usb_checkout" apply --unidiff-zero "$mount_dir/usb-app.patch"
 for file in msc.c volume.c volume.h; do
     cp "$mount_dir/$file" "$usb_checkout/source/"
@@ -27,7 +26,7 @@ for file in nand.c raw_nand.h; do
     cp "$card/raw-nand/source/$file" "$usb_checkout/source/"
 done
 make -C "$usb_checkout"
-dlditool "$card/build/usb-mount/nrio.dldi" "$usb_checkout/nrio-usb-disk.nds"
+dlditool "$driver" "$usb_checkout/nrio-usb-disk.nds"
 
 mkdir -p "$nriotool/data"
 python3 - "$usb_checkout/nrio-usb-disk.nds" "$nriotool/data/usb_mount.bin" <<'PY'

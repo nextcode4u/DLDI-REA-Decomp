@@ -38,7 +38,11 @@ NRIO_ROUTINE(2228) void nrio_load_zone(void)
         nrio_pending_page_count = 0;
         nrio_pending_physical_block = 0xff;
         nrio_old_physical_block = 0xff;
+#ifdef NRIO_UNIFIED
+        if (!nrio_reload_validated_table()) return;
+#else
         nrio_load_physical_block_table();
+#endif
         block = 0;
         do {
             table = nrio_free_block_table;
@@ -194,7 +198,11 @@ scan_new_zone:
     nrio_pending_physical_block = 0xff;
     nrio_old_physical_block = 0xff;
     nrio_pending_page_count = 0;
+#ifdef NRIO_UNIFIED
+    if (!nrio_reload_validated_table()) return;
+#else
     nrio_load_physical_block_table();
+#endif
     block = 0;
     do {
         table = nrio_free_block_table;

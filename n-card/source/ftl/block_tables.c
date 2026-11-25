@@ -7,13 +7,20 @@ extern void nrio_set_nand_address(u32 address);
 /* Keep the search, stride, and success paths in the original GCC layout. */
 NRIO_ROUTINE(1dc4) u32 nrio_find_block_table(void)
 {
+#ifdef NRIO_EXPERIMENTAL
+    u32 address = nrio_block_table_address;
+#else
     u32 address = nrio_nand_data_base - 0x100000;
+#endif
 
     goto check_address;
 
 read_spare:
     nrio_set_nand_address(address);
     nrio_page_operation(10);
+#ifdef NRIO_UNIFIED
+    if (nrio_bus_fault) return false;
+#endif
     if (nrio_check_spare_markers() != 0 || nrio_spare[11] != 0xab) {
         goto next_block;
     }
@@ -69,14 +76,59 @@ NRIO_ROUTINE(31a8) int nrio_init_nand_geometry(u32 block_size, u16 blocks, u32 d
         *p = 0;
     }
     nrio_physical_block_table = nrio_zone_zero_physical;
+#ifdef NRIO_EXPERIMENTAL
+    u16 physical_blocks = 0;
+    nrio_block_table_address = data_base - 0x100000;
+    while (nrio_block_table_address < data_base && nrio_find_block_table()) {
+        nrio_current_zone = 511;
+        nrio_physical_block_table[63] = ~0u;
+        nrio_load_physical_block_table();
+#ifdef NRIO_UNIFIED
+        if (nrio_bus_fault) return -1;
+#endif
+        u32 count = nrio_physical_block_table[63];
+        bool valid = count >= 64 && count <= blocks;
+#ifdef NRIO_UNIFIED
+        /* A table that aliases two slots is unsafe to write through. */
+        u32 seen[0x4000 / 32];
+        for (unsigned i = 0; i < (blocks + 31u) / 32; ++i) seen[i] = 0;
+#endif
+        for (u16 zone = 0; valid && zone < (count >> 6); ++zone) {
+            nrio_current_zone = zone;
+            for (unsigned i = 0; i < 64; ++i) nrio_physical_block_table[i] = ~0u;
+            nrio_load_physical_block_table();
+#ifdef NRIO_UNIFIED
+            if (nrio_bus_fault) return -1;
+#endif
+            for (unsigned i = 0; i < 64; ++i) {
+                u32 block = nrio_physical_block_table[i];
+                if (block >= blocks) { valid = false; break; }
+#ifdef NRIO_UNIFIED
+                u32 bit = 1u << (block & 31);
+                if (seen[block >> 5] & bit) { valid = false; break; }
+                seen[block >> 5] |= bit;
+#endif
+            }
+#ifdef NRIO_UNIFIED
+            if (valid) nrio_zone_map_fingerprints[zone] = nrio_map_fingerprint(nrio_physical_block_table);
+#endif
+        }
+        if (valid) {
+            physical_blocks = (u16)count;
+            break;
+        }
+        nrio_block_table_address += block_size;
+    }
+    if (!physical_blocks) return -1;
+#else
     if (!nrio_find_block_table()) {
         for (;;) {
         }
     }
     nrio_current_zone = 511;
     nrio_load_physical_block_table();
-
     u16 physical_blocks = nrio_physical_block_table[63];
+#endif
     u16 zones = physical_blocks >> 6;
     nrio_sector_capacity =
         ((u32)(zones * 62) << (nrio_sectors_per_block_shift + 2)) - nrio_sector_base;
@@ -95,6 +147,9 @@ NRIO_ROUTINE(31a8) int nrio_init_nand_geometry(u32 block_size, u16 blocks, u32 d
     nrio_clear_block_map();
     nrio_clear_free_table();
     nrio_load_zone();
+#ifdef NRIO_UNIFIED
+    if (!nrio_sector_capacity) return -1;
+#endif
     return 0;
 }
 #endif

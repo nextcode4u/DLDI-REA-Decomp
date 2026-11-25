@@ -1,0 +1,184 @@
+diff --git a/Makefile b/Makefile
+index 11de03b..e3c8360 100644
+--- a/Makefile
++++ b/Makefile
+@@ -23,7 +23,7 @@ NITRO_FILES := nrioFiles
+ 
+ include $(DEVKITARM)/ds_rules
+ 
+-.PHONY: data bootloader clean
++.PHONY: data bundle bootloader clean
+ 
+ #---------------------------------------------------------------------------------
+ # main targets
+@@ -49,7 +49,10 @@ $(TARGET).nds : $(NITRO_FILES) arm7/$(TARGET).elf arm9/$(TARGET).elf
+ data:
+ 	@mkdir -p data
+ 
+-bootloader: data
++bundle:
++	python3 embed_bundle.py "$(CURDIR)"
++
++bootloader: data bundle
+ 	$(MAKE) -C bootloader LOADBIN=$(TOPDIR)/data/load.bin
+ 
+ #---------------------------------------------------------------------------------
+diff --git a/arm9/Makefile b/arm9/Makefile
+index 9a9215f..4823a59 100644
+--- a/arm9/Makefile
++++ b/arm9/Makefile
+@@ -35,7 +35,7 @@ LDFLAGS   = -specs=ds_arm9.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
+ #---------------------------------------------------------------------------------
+ # any extra libraries we wish to link with the project
+ #---------------------------------------------------------------------------------
+-LIBS := -lfat -lnds9
++LIBS := -lfat -lnds9 -lz
+ 
+ #---------------------------------------------------------------------------------
+ # list of directories containing libraries, this must be the top level containing
+diff --git a/arm9/source/main.cpp b/arm9/source/main.cpp
+index 5aa70af..ff64a20 100644
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -26,7 +26,6 @@ extern "C" const u8 usb_mount_bin_end[] __attribute__((weak));
+ 
+ #define NDS_HEADER 0x02FFFE00
+ #define DSI_HEADER 0x02FFE000
+-#define FILECOPYBUFFER 0x02100000
+ #define MAXFILESIZE (u32)0x00200000
+ 
+ #define INITBUFFER  0x02000000
+@@ -307,6 +306,18 @@ void DoUpdateConvert() {
+ 	}
+ }
+ 
++// Stream bundled files. A fixed RAM buffer can overlap the BIOS payload.
++static bool CopyBundledFile(FILE *source, FILE *dest, u32 bytes) {
++    u8 buffer[2048];
++    while (bytes) {
++        u32 chunk = bytes < sizeof(buffer) ? bytes : sizeof(buffer);
++        if (fread(buffer, 1, chunk, source) != chunk ||
++            fwrite(buffer, 1, chunk, dest) != chunk) return false;
++        bytes -= chunk;
++    }
++    return true;
++}
++
+ void DoCartBoot() {
+ 	consoleClear();
+ 	if(access("sd:/nrioFiles/xBootStrap.nds", F_OK) != 0 && nitroFSMounted) {
+@@ -321,10 +332,10 @@ void DoCartBoot() {
+ 					printf("WARNING: xBootStrap not found!\n");
+ 					printf("Trying to use NitroFS copy.\n\n");
+ 					printf("Please wait...\n");
+-					fread((void*)FILECOPYBUFFER, 1, fSize, src);
+-					fwrite((void*)FILECOPYBUFFER, fSize, 1, dest);
++					bool copied = CopyBundledFile(src, dest, fSize);
+ 					fclose(src);
+-					fclose(dest);
++					if (fclose(dest)) copied = false;
++					if (!copied) remove("sd:/nrioFiles/xBootStrap.nds");
+ 				}
+ 			}
+ 		}
+@@ -367,10 +378,10 @@ void DoGM9iBoot() {
+ 					printf("WARNING: GM9Nrio not found!\n");
+ 					printf("Trying to use NitroFS copy.\n\n");
+ 					printf("Please wait...\n");
+-					fread((void*)FILECOPYBUFFER, 1, fSize, src);
+-					fwrite((void*)FILECOPYBUFFER, fSize, 1, dest);
++					bool copied = CopyBundledFile(src, dest, fSize);
+ 					fclose(src);
+-					fclose(dest);
++					if (fclose(dest)) copied = false;
++					if (!copied) remove("sd:/nrioFiles/GM9Nrio.nds");
+ 				}
+ 			}
+ 		}
+@@ -413,10 +424,10 @@ void DoSaveTestBoot() {
+ 					printf("nrioSaveTester not found!\n");
+ 					printf("Trying to use NitroFS copy.\n\n");
+ 					printf("Please wait...\n");
+-					fread((void*)FILECOPYBUFFER, 1, fSize, src);
+-					fwrite((void*)FILECOPYBUFFER, fSize, 1, dest);
++					bool copied = CopyBundledFile(src, dest, fSize);
+ 					fclose(src);
+-					fclose(dest);
++					if (fclose(dest)) copied = false;
++					if (!copied) remove("sd:/nrioFiles/nrioSaveTester.nds");
+ 				}
+ 			}
+ 		}
+@@ -802,6 +813,7 @@ static void DoSrlDump(const char *name, u32 table = 0) {
+ }
+ 	
+ extern "C" void nrioTool_sd_recovery(int action, const char *root);
++#include "udisk-setup.h"
+ 	
+ static const char *RecoveryStorageRoot() {
+ 	if (wasDSi) return sdMounted ? "sd:/nrioFiles" : nullptr;
+@@ -833,7 +845,8 @@ enum class MenuAction {
+ 	DumpMain, DumpStage2, DumpUdisk, TestDump,
+ 	BootCart, BootGm9, Usb,
+ 	CheckCart, SaveBlock0, Advanced, BuildUpdate,
+-	PatchSafeMode, InstallBanner, RestoreArm7, RestoreBlock0, ReplaceSafeMode, RepairUdisk,
++	PatchSafeMode, InstallBanner, RestoreArm7, RestoreBlock0, ReplaceSafeMode, RepairUdisk, UdiskSetup, QuickFormat,
++	InstallUdisk, CopyXMenu, RemoveUpdater,
+ 	DumpFatSector, RestoreFatSector, DumpFatImage, WriteFatImage,
+ };
+ 
+@@ -894,6 +907,24 @@ static void RunRecoveryAction(int action, const char *startupRecoveryRoot) {
+ 	else DoStorageRecovery(action);
+ }
+ 
++static void RunUdiskSetupMenu(const char *backupRoot) {
++	const MenuItem items[] = {
++		{MenuAction::QuickFormat, "Quick Format N-Card"},
++		{MenuAction::InstallUdisk, "Install stock uDisk 1.45"},
++		{MenuAction::CopyXMenu, "Copy XMenu files"},
++		{MenuAction::RemoveUpdater, "Delete old uDisk installer"},
++	};
++	for (;;) {
++		switch (PickAction("uDisk setup", items)) {
++			case MenuAction::QuickFormat: nrioTool_quick_format(backupRoot); break;
++			case MenuAction::InstallUdisk: nrioTool_sd_recovery(8, backupRoot); break;
++			case MenuAction::CopyXMenu: nrioTool_udisk_setup(NRIO_UDISK_COPY_MENU, backupRoot); break;
++			case MenuAction::RemoveUpdater: nrioTool_udisk_setup(NRIO_UDISK_REMOVE_UPDATER, backupRoot); break;
++			default: return;
++		}
++	}
++}
++
+ static void RunAdvancedMenu(const char *startupRecoveryRoot, bool recoveryAvailable) {
+ 	const bool regular = !startupRecoveryRoot;
+ 	const MenuItem items[] = {
+@@ -902,6 +933,7 @@ static void RunAdvancedMenu(const char *startupRecoveryRoot, bool recoveryAvaila
+ 		{MenuAction::RestoreArm7, "Restore banner ARM7", recoveryAvailable},
+ 		{MenuAction::RestoreBlock0, "Restore block 0", recoveryAvailable},
+ 		{MenuAction::ReplaceSafeMode, "Replace safe-mode ROM", recoveryAvailable},
++		{MenuAction::UdiskSetup, "uDisk setup"},
+ 		{MenuAction::RepairUdisk, "Repair stock uDisk", recoveryAvailable},
+ 		{MenuAction::BuildUpdate, "Build update file", regular},
+ 	};
+@@ -912,6 +944,7 @@ static void RunAdvancedMenu(const char *startupRecoveryRoot, bool recoveryAvaila
+ 			case MenuAction::RestoreArm7: RunRecoveryAction(3, startupRecoveryRoot); break;
+ 			case MenuAction::RestoreBlock0: RunRecoveryAction(4, startupRecoveryRoot); break;
+ 			case MenuAction::ReplaceSafeMode: RunRecoveryAction(6, startupRecoveryRoot); break;
++			case MenuAction::UdiskSetup: RunUdiskSetupMenu(startupRecoveryRoot ? startupRecoveryRoot : RecoveryStorageRoot()); break;
+ 			case MenuAction::RepairUdisk: RunRecoveryAction(7, startupRecoveryRoot); break;
+ 			case MenuAction::BuildUpdate: DoUpdateConvert(); break;
+ 			default: return;
+@@ -1060,9 +1093,10 @@ int main() {
+ 	if (recoveryOnly) {
+ 		if (wasDSi || GetSlot2Storage()) MountFATDevices();
+ 		if (const char *root = RecoveryStorageRoot()) RunStorageRecoveryMenu(root);
+-		else if (wasDSi) DoFATerror(true, true);
+-		else DoError("Recovery needs writable Slot-2\n"
+-		             "storage and its DLDI driver.");
++		else {
++			if (SCFGUnlocked) enableSlot1();
++			RunUdiskSetupMenu(nullptr);
++		}
+ 		fifoSendValue32(FIFO_USER_03, 1);
+ 		return 0;
+ 	}

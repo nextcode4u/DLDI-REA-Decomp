@@ -29,6 +29,24 @@ extern u32 nrio_sector_capacity;
 extern const u8 *nrio_write_buffer;
 extern u8 nrio_new_sector_request;
 extern u32 nrio_sector_count;
+#ifdef NRIO_UNIFIED
+extern u32 nrio_zone_map_fingerprints[256];
+extern u32 nrio_bus_fault;
+bool nrio_wait_card_data(void);
+bool nrio_wait_card_idle(void);
+static inline void nrio_latch_bus_fault(void)
+{
+    nrio_bus_fault = 1;
+    nrio_sector_capacity = 0;
+}
+bool nrio_reload_validated_table(void);
+static inline u32 nrio_map_fingerprint(const u32 *map)
+{
+    u32 hash = 2166136261u;
+    for (unsigned i = 0; i < 64; ++i) hash = (hash ^ map[i]) * 16777619u;
+    return hash;
+}
+#endif
 extern u32 nrio_cached_logical_page;
 
 extern u8 *nrio_read_buffer;

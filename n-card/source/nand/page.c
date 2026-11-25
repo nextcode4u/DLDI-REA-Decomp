@@ -66,6 +66,9 @@ NRIO_ROUTINE(2004) u8 nrio_allocate_free_block(void)
             nrio_select_physical_page(block, 0);
             nrio_page_operation(7);
             u32 status = nrio_decode_nand_status();
+#ifdef NRIO_UNIFIED
+            if (nrio_bus_fault) return 0xff;
+#endif
             if (status == 0) {
                 nrio_free_block_table[block] = status;
                 nrio_zone_free_cursor[nrio_current_zone] = block;

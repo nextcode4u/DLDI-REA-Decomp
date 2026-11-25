@@ -1,0 +1,37 @@
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -922,6 +922,7 @@
+ static void RunUdiskSetupMenu(const char *backupRoot) {
+ 	const MenuItem items[] = {
+ 		{MenuAction::QuickFormat, "Quick Format N-Card"},
++		{MenuAction::CheckCart, "Check Cart", !backupRoot},
+ 		{MenuAction::InstallUdisk, "Install stock uDisk 1.45"},
+ 		{MenuAction::InstallXulu, "Set up XuluMenu"},
+ 		{MenuAction::SwitchXulu, "Switch to XuluMenu"},
+@@ -931,6 +932,7 @@
+ 	for (;;) {
+ 		switch (PickAction("uDisk setup", items)) {
+ 			case MenuAction::QuickFormat: nrioTool_quick_format(backupRoot); break;
++			case MenuAction::CheckCart: nrioTool_sd_recovery(5, backupRoot); break;
+ 			case MenuAction::InstallUdisk: nrioTool_sd_recovery(8, backupRoot); break;
+ 			case MenuAction::InstallXulu: nrioTool_udisk_setup(NRIO_UDISK_XULU_FRESH, backupRoot); break;
+ 			case MenuAction::SwitchXulu: nrioTool_udisk_setup(NRIO_UDISK_XULU_SWITCH, backupRoot); break;
+@@ -976,14 +978,16 @@
+ 	while (!ErrorState) {
+ 		const bool recoveryAvailable = recoveryOnly || RecoveryStorageRoot() != nullptr;
+ 		const MenuItem items[] = {
+-			{MenuAction::CheckCart, "Check cart", recoveryAvailable},
++			{MenuAction::CheckCart, "Check Cart"},
+ 			{MenuAction::SaveBlock0, "Back up block 0", recoveryAvailable},
+ 			{MenuAction::Usb, "Mount USB drive", UsbMountAvailable()},
+ 			{MenuAction::BootGm9, "Boot GodMode9Nrio", wasDSi && !recoveryOnly},
+ 			{MenuAction::Advanced, "Advanced NAND tools"},
+ 		};
+ 		switch (PickAction("Utility Menu", items, recoveryOnly)) {
+-			case MenuAction::CheckCart: RunRecoveryAction(5, startupRecoveryRoot); break;
++			case MenuAction::CheckCart:
++				nrioTool_sd_recovery(5, startupRecoveryRoot ? startupRecoveryRoot : RecoveryStorageRoot());
++				break;
+ 			case MenuAction::SaveBlock0: RunRecoveryAction(2, startupRecoveryRoot); break;
+ 			case MenuAction::Usb: DoUsbMount(); break;
+ 			case MenuAction::BootGm9: SetSCFG(); DoGM9iBoot(); break;

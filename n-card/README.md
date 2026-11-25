@@ -12,6 +12,8 @@ make DEVKITPRO=/path/to/r20-sdk
 
 In this workspace the SDK root is `/mnt/d/WORKSPACES/jenesisds-r20-sdk.A6WpYa`. The default build writes `build/nrio.dldi`, `build/nrio.elf`, and `build/nrio.map`. The checked-in C binary and comparison report are in [compiled-from-c](compiled-from-c/).
 
+nrioTool uses the [unified C driver](unified/README.md) for read-only diagnostics and writable filesystem access. The [earlier experimental read-only build](experimental/README.md) is still available for comparison. Neither changes the historical matching build.
+
 ## Byte-matching build
 
 ```sh
