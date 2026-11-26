@@ -1,4 +1,4 @@
-/* Host tests for the filesystem-only loader switch. */
+/* Host tests for the migration from the old filesystem-only loader. */
 #include "../xulu-install.h"
 #include <assert.h>
 #include <stdio.h>
@@ -32,45 +32,39 @@ static void save(const char *path, const char *s)
     assert(f && fputs(s, f) != EOF && !fclose(f));
 }
 
-static enum nrio_xulu_result install(bool allow)
+static enum nrio_xulu_result install(void)
 {
-    return nrio_install_xulu_files(".", allow, id(payload[0]), id(payload[1]), stream, 0, 1);
+    return nrio_restore_stock_menu(".", id(payload[0]), id(payload[1]), stream, 1);
 }
 
 int main(void)
 {
     char temp[] = "/tmp/nrio-xulu-test.XXXXXX";
     assert(mkdtemp(temp) && !chdir(temp));
-    assert(install(false) == NRIO_XULU_OK);
-    assert(nrio_file_matches("xmenu.dat", id(payload[0])));
-    assert(nrio_file_matches("xmenu.nds", id(payload[1])));
-    assert(install(false) == NRIO_XULU_ALREADY);
-    assert(!unlink("xmenu.dat") && !unlink("xmenu.nds"));
-
-    save("xmenu.dat", payload[1]);
-    assert(install(false) == NRIO_XULU_UNCHANGED);
-    assert(nrio_file_matches("xmenu.dat", id(payload[1])) && access("xmenu.nds", F_OK));
-    fail_stream = true;
-    assert(install(true) == NRIO_XULU_ERROR);
-    assert(nrio_file_matches("xmenu.dat", id(payload[1])) && access("xmenu.nds", F_OK));
-    fail_stream = false;
-    assert(install(true) == NRIO_XULU_OK);
-    assert(nrio_file_matches("xmenu.nds", id(payload[1])));
-    assert(nrio_file_matches("xmenu.dat", id(payload[0])));
+    assert(install() == NRIO_XULU_OK);
+    assert(nrio_file_matches("xmenu.dat", id(payload[1])));
+    assert(install() == NRIO_XULU_ALREADY);
+    assert(access("xulu-old.nds", F_OK));
 
     save("xmenu.dat", "some other loader");
-    assert(install(false) == NRIO_XULU_UNCHANGED);
-    assert(install(true) == NRIO_XULU_OK);
-    assert(nrio_file_matches("xmenu-old.nds", id("some other loader")));
-    assert(nrio_file_matches("xmenu.nds", id(payload[1])));
+    assert(install() == NRIO_XULU_UNCHANGED);
+    assert(nrio_file_matches("xmenu.dat", id("some other loader")));
+
+    save("xmenu.dat", payload[0]);
+    fail_stream = true;
+    assert(install() == NRIO_XULU_ERROR);
     assert(nrio_file_matches("xmenu.dat", id(payload[0])));
+    fail_stream = false;
+    save("xulu-old.nds", "unrelated backup");
+    assert(install() == NRIO_XULU_ALIAS_CONFLICT);
+    assert(nrio_file_matches("xulu-old.nds", id("unrelated backup")));
+    assert(!unlink("xulu-old.nds"));
 
-    save("xmenu.dat", "a different loader");
-    assert(install(true) == NRIO_XULU_ALIAS_CONFLICT);
-    assert(nrio_file_matches("xmenu.dat", id("a different loader")));
-
-    assert(!unlink("xmenu-old.nds") && !unlink("xmenu.dat") && !unlink("xmenu.nds"));
+    assert(install() == NRIO_XULU_OK);
+    assert(nrio_file_matches("xmenu.dat", id(payload[1])));
+    assert(nrio_file_matches("xulu-old.nds", id(payload[0])));
+    assert(!unlink("xulu-old.nds") && !unlink("xmenu.dat"));
     assert(!chdir("/") && !rmdir(temp));
-    puts("XuluMenu fresh install, explicit switch, backup preservation and refusal checks passed.");
+    puts("Stock XMenu setup and legacy-wrapper migration passed.");
     return 0;
 }

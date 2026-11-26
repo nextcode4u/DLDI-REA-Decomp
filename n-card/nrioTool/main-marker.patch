@@ -1,0 +1,19 @@
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -715,7 +715,7 @@
+ 	DumpMain, DumpStage2, DumpUdisk, TestDump,
+ 	BootCart, BootGm9, Usb,
+ 	CheckCart, SaveBlock0, Advanced, BuildUpdate,
+-	PatchSafeMode, BypassSafeMode, InstallBanner, RestoreArm7, RestoreBlock0, ReplaceSafeMode, RepairUdisk, UdiskSetup, QuickFormat, FullFormat,
++	PatchSafeMode, PatchMainMarker, BypassSafeMode, InstallBanner, RestoreArm7, RestoreBlock0, ReplaceSafeMode, RepairUdisk, UdiskSetup, QuickFormat, FullFormat,
+ 	InstallUdisk, InstallCustomUdisk, InstallXulu, SetupStockMenu, CopyXMenu, RemoveUpdater,
+ 	DumpFatSector, RestoreFatSector, DumpFatImage, FormatHelp,
+ };
+@@ -850,6 +850,7 @@
+ 			case MenuAction::PatchSafeMode: RunRecoveryAction(0, startupRecoveryRoot); break;
+ 			case MenuAction::InstallBanner: RunRecoveryAction(1, startupRecoveryRoot); break;
+ 			case MenuAction::RestoreArm7: RunRecoveryAction(3, startupRecoveryRoot); break;
++			case MenuAction::PatchMainMarker: RunRecoveryAction(12, startupRecoveryRoot); break;
+ 			case MenuAction::RestoreBlock0: RunRecoveryAction(4, startupRecoveryRoot); break;
+ 			case MenuAction::ReplaceSafeMode: RunRecoveryAction(6, startupRecoveryRoot); break;
+ 			case MenuAction::BypassSafeMode: RunRecoveryAction(9, startupRecoveryRoot); break;

@@ -5,6 +5,8 @@
 #include <stdint.h>
 
 #define NRIO_RAW_WORKSPACE_BYTES (128u * (2048u + 64u))
+#define NRIO_RAW_BANNER_OFFSET UINT32_C(0x2000)
+#define NRIO_RAW_BANNER_BYTES UINT32_C(0x800)
 #define NRIO_RAW_PRIMARY_TABLE UINT32_C(0x8000)
 #define NRIO_RAW_SECONDARY_TABLE UINT32_C(0x40000)
 #define NRIO_RAW_TABLE_BYTES UINT32_C(0x4000)
@@ -95,6 +97,17 @@ bool nrio_recovery_prepare_banner_spare_restore(void);
 bool nrio_recovery_install_sd_banner(void);
 bool nrio_recovery_prepare_block0_restore(const void *backup, uint32_t bytes);
 bool nrio_recovery_install_block0_restore(void);
+enum nrio_main_marker_status {
+    NRIO_MARKER_UNRECOGNIZED, NRIO_MARKER_ORIGINAL, NRIO_MARKER_PATCHED, NRIO_MARKER_READ_ERROR,
+};
+
+enum { NRIO_MAIN_MARKER_PROBE_PAGES = 6 };
+enum nrio_main_marker_status nrio_recovery_probe_main_marker(void *records, uint32_t bytes);
+enum nrio_main_marker_status nrio_classify_main_marker(const uint8_t *records);
+bool nrio_recovery_prepare_main_marker(void);
+bool nrio_recovery_install_main_marker(void);
+bool prepare_main_marker(uint32_t pages, uint8_t *records, struct nrio_raw_write_error *error);
+bool install_main_marker(uint32_t pages, uint8_t *records, struct nrio_raw_write_error *error);
 uint32_t nrio_recovery_backup_pages(void);
 bool nrio_recovery_copy_backup_page(uint32_t page, void *main, void *spare);
 bool nrio_recovery_repair_table(const struct nrio_raw_table_plan *plan);

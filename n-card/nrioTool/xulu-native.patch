@@ -1,0 +1,59 @@
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -716,7 +716,7 @@
+ 	BootCart, BootGm9, Usb,
+ 	CheckCart, SaveBlock0, Advanced, BuildUpdate,
+ 	PatchSafeMode, BypassSafeMode, InstallBanner, RestoreArm7, RestoreBlock0, ReplaceSafeMode, RepairUdisk, UdiskSetup, QuickFormat, FullFormat,
+-	InstallUdisk, InstallXulu, SwitchXulu, CopyXMenu, RemoveUpdater,
++	InstallUdisk, InstallXulu, SetupStockMenu, CopyXMenu, RemoveUpdater,
+ 	DumpFatSector, RestoreFatSector, DumpFatImage, FormatHelp,
+ };
+ 
+@@ -796,6 +796,6 @@
+-static bool launchedFromSd;
++static const char *launchPath;
+ 
+ static void RunUdiskSetupMenu(const char *backupRoot) {
+-	const bool canFormat = nrio_can_format(launchedFromSd, wasDSi && sdMounted,
++	const bool canFormat = nrio_can_format(launchPath, wasDSi, sdMounted,
+ 	                                       !wasDSi && GetSlot2Storage(), fatMounted);
+ 	const MenuItem items[] = {
+@@ -804,8 +804,8 @@
+ 		{MenuAction::FormatHelp, "Format unavailable", !canFormat},
+ 		{MenuAction::CheckCart, "Check Cart", !backupRoot},
+-		{MenuAction::InstallUdisk, "Install stock uDisk 1.45"},
+-		{MenuAction::InstallXulu, "Set up XuluMenu"},
+-		{MenuAction::SwitchXulu, "Switch to XuluMenu"},
++		{MenuAction::InstallXulu, "XuluMenu NAND (recommended)"},
++		{MenuAction::InstallUdisk, "Install stock uDisk 1.45"},
++		{MenuAction::SetupStockMenu, "Set up stock XMenu"},
+ 		{MenuAction::CopyXMenu, "Copy stock/custom XMenu"},
+ 		{MenuAction::RemoveUpdater, "Delete old uDisk installer"},
+ 	};
+@@ -815,14 +815,14 @@
+ 			case MenuAction::FullFormat: nrioTool_full_format(backupRoot); break;
+ 			case MenuAction::FormatHelp:
+ 				DoError("Format needs a separate launch.\n"
+-				        "Use DSi SD or a Slot-2 device.\n"
+-				        "Slot-1 or unverified launch.\n"
++				        "Mount DSi SD or use Slot-2.\n"
++				        "Slot-1 launches cannot format.\n"
+ 				        "No changes made.", false);
+ 				break;
+ 			case MenuAction::CheckCart: nrioTool_sd_recovery(5, backupRoot); break;
+ 			case MenuAction::InstallUdisk: nrioTool_sd_recovery(8, backupRoot); break;
+-			case MenuAction::InstallXulu: nrioTool_udisk_setup(NRIO_UDISK_XULU_FRESH, backupRoot); break;
+-			case MenuAction::SwitchXulu: nrioTool_udisk_setup(NRIO_UDISK_XULU_SWITCH, backupRoot); break;
++			case MenuAction::InstallXulu: nrioTool_sd_recovery(10, backupRoot); break;
++			case MenuAction::SetupStockMenu: nrioTool_udisk_setup(NRIO_UDISK_STOCK_MENU, backupRoot); break;
+ 			case MenuAction::CopyXMenu: nrioTool_udisk_setup(NRIO_UDISK_COPY_MENU, backupRoot); break;
+ 			case MenuAction::RemoveUpdater: nrioTool_udisk_setup(NRIO_UDISK_REMOVE_UPDATER, backupRoot); break;
+ 			default: return;
+@@ -988,6 +988,6 @@
+ int main(int argc, char **argv) {
+-	launchedFromSd = argc > 0 && argv && nrio_sd_launch_path(argv[0]);
++	launchPath = argc > 0 && argv ? argv[0] : nullptr;
+ 	scanKeys();
+ 	if(keysDown() & KEY_B)autoBootCart = true;
+ 	wasDSi = isDSiMode();
+ 	const bool usbOnly = UsbMountAvailable() && (keysHeld() & KEY_X);

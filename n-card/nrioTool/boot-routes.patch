@@ -1,0 +1,42 @@
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -716,7 +716,7 @@
+ 	BootCart, BootGm9, Usb,
+ 	CheckCart, SaveBlock0, Advanced, BuildUpdate,
+ 	PatchSafeMode, BypassSafeMode, InstallBanner, RestoreArm7, RestoreBlock0, ReplaceSafeMode, RepairUdisk, UdiskSetup, QuickFormat, FullFormat,
+-	InstallUdisk, InstallXulu, SetupStockMenu, CopyXMenu, RemoveUpdater,
++	InstallUdisk, InstallCustomUdisk, InstallXulu, SetupStockMenu, CopyXMenu, RemoveUpdater,
+ 	DumpFatSector, RestoreFatSector, DumpFatImage, FormatHelp,
+ };
+ 
+@@ -805,6 +805,7 @@
+ 		{MenuAction::CheckCart, "Check Cart", !backupRoot},
+ 		{MenuAction::InstallXulu, "XuluMenu NAND (recommended)"},
+ 		{MenuAction::InstallUdisk, "Install stock uDisk 1.45"},
++		{MenuAction::InstallCustomUdisk, "Install custom uDisk", backupRoot != nullptr},
+ 		{MenuAction::SetupStockMenu, "Set up stock XMenu"},
+ 		{MenuAction::CopyXMenu, "Copy stock/custom XMenu"},
+ 		{MenuAction::RemoveUpdater, "Delete old uDisk installer"},
+@@ -816,11 +817,12 @@
+ 			case MenuAction::FormatHelp:
+ 				DoError("Format needs a separate launch.\n"
+ 				        "Mount DSi SD or use Slot-2.\n"
+-				        "Slot-1 launches cannot format.\n"
++				        "DS mode needs separate media.\n"
+ 				        "No changes made.", false);
+ 				break;
+ 			case MenuAction::CheckCart: nrioTool_sd_recovery(5, backupRoot); break;
+ 			case MenuAction::InstallUdisk: nrioTool_sd_recovery(8, backupRoot); break;
++			case MenuAction::InstallCustomUdisk: nrioTool_sd_recovery(11, backupRoot); break;
+ 			case MenuAction::InstallXulu: nrioTool_sd_recovery(10, backupRoot); break;
+ 			case MenuAction::SetupStockMenu: nrioTool_udisk_setup(NRIO_UDISK_STOCK_MENU, backupRoot); break;
+ 			case MenuAction::CopyXMenu: nrioTool_udisk_setup(NRIO_UDISK_COPY_MENU, backupRoot); break;
+@@ -837,7 +839,7 @@
+ 		{MenuAction::InstallBanner, "Install custom banner", recoveryAvailable},
+ 		{MenuAction::RestoreArm7, "Restore banner ARM7", recoveryAvailable},
+ 		{MenuAction::RestoreBlock0, "Restore block 0", recoveryAvailable},
+-		{MenuAction::ReplaceSafeMode, "Replace safe-mode ROM", recoveryAvailable},
++		{MenuAction::ReplaceSafeMode, "Install/replace safe-mode ROM", recoveryAvailable},
+ 		{MenuAction::BypassSafeMode, "Bypass safe mode", recoveryAvailable},
+ 		{MenuAction::UdiskSetup, "uDisk setup"},
+ 		{MenuAction::RepairUdisk, "Repair stock uDisk", recoveryAvailable},

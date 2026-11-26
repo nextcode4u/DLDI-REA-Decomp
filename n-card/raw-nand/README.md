@@ -41,6 +41,33 @@ Across the newer and earlier DS Linkers, Fire Line, and ExpressCard spare captur
 
 Page 0 differs across the captured revisions, including an all-`FF` Fire Line record and several distinct populated records. The stock updater, installed uDisk and XMenu, and the archived N-Card stage-1 dump supplied no exact copy of that newer DS Linker's page-0 record. A shared ARM7 or pages 2 and 3 match therefore cannot identify which page 0 belongs to an erased cart. Kai's proposed sample set could broaden this comparison when the dumps are available. [Archived N-Card dumps](https://github.com/m4x10187/fire-card-archive/tree/ced86434054e47dcca8d4e90efd25cc92f88d688/N-Card/Dumps)
 
+### Fingerprint surviving boot data
+
+Run **Check Cart → Surviving boot data** on the working reference and on the
+unbootable cart. It records the NAND ID and geometry in `CHECK-CART.TXT` and
+reports stable CRC32 values from outside block 0. It reads each sector twice
+and labels read failures, changed data, and uniformly erased or zero bytes.
+It does not authorize a recovery write.
+
+For an existing physical main dump, the equivalent offline command is:
+
+```sh
+python3 inspect_boot.py main.bin --survivors --pages-per-block 128
+```
+
+Use 64 instead of 128 if Check Cart reports a 64-page erase block. Only then
+is `0x20000` outside block 0, so the tool also checks that sector. A dump must
+include bytes through `0x801FF` to fingerprint the usual uDisk header. The
+offline tool also gives SHA-256 values for direct comparison.
+
+The complete first 64 KiB of the Fire Line and 8 Gbit DS Linker secondary
+maps are byte-identical. The full 128 KiB map windows differ because the Fire
+Line uses zero padding and footer revision 2, while the DS Linker uses erased
+padding and revision 3. Those bytes describe the installed firmware/write
+format, not a board identifier. Using either checksum as the sole restore
+gate would be unsafe even though the full checksums distinguish these dumps.
+See [the gap audit](RECOVERY-GAPS.md) for the remaining tests.
+
 ### Check a block-0 backup before using it
 
 Run this read-only check with the three files exported together by nrioTool:
@@ -55,6 +82,8 @@ Apache Thunder's newer DS Linker capture reports NAND ID `0x2555D5EC`, which the
 
 The newer stock and patched safe-mode files are both `0x1C000` bytes, with erased padding after the declared size. The patch changes only the ROM header and the ARM7 sector at `0x14200`. nrioTool accepts the padding while checking the used ROM against the live mapping. The files passed the ARM9 backend's preparation and verified rewrite in emulation using a constructed matching map. The test does not establish compatibility with the cart's current map.
 
+See the [DSFlash2 image and boot-spare findings](DSFLASH2.md) for the older GUI writer and a verified 72-byte match to DS Linker spare data.
+
 ### ECC and the original uDisk package
 
 Recomputing the existing NRIO ECC over the supplied DS Linker main file does not reproduce its first six spare records. Those records carry boot data, including ARM7 copies, and their corresponding main file also fails the manifest check. The earlier ExpressCard repair restored boot by putting back ARM7 spare bytes that an ECC rewrite had overwritten. Those results support preserving the boot records separately from generating ECC for ordinary NAND pages.
@@ -68,6 +97,8 @@ Apache Thunder's published XuluMenu updater ARM9 binary is the same length as th
 The packaged `xmenu.dat` embeds the 19,724-byte NRIO driver at `0xD26FC`, with only its feature byte at driver offset `0x64` differing from the reference. More than half of uDisk's aligned 64-byte ARM9 windows with varied contents also occur in XMenu's ARM9 image, supporting shared code. XMenu's NitroFS root contains `c_file.bmp`, `desktop.bmp`, `global.ini`, and `savetype.sdb`, and its ARM9 image includes `DSYSTEM` strings. The comparison does not establish which code paths patch game ROMs or the cause of the reported HBMenu launch hang. Asie's hardware work identifies the D12 and D14 USB writer variants and the N-Card team's Keil USB examples, independently of the filesystem driver. [DS Linker Writer hardware and USB stacks](https://wiki.asie.pl/doku.php?id=notes:flashcart:ds_linker_writer)
 
 In the separate edited ExpressCard logical ROM, the header CRC matches (`0xA86B`). The stored secure-area CRC is `0x450D`, and calculating it over captured bytes at `0x4000–0x7FFF` gives `0x9F6A`. The archived, unedited ExpressCard image and the edited capture have byte-identical secure-area contents and the same stored CRC. On a temporary copy, devkitPro ndstool re-encrypted the data and calculated `0xC104`, reproducing Apache's reported kind of mismatch. It predates the header capacity and used-length edits. The original secure-read bytes and the reason for the stock header value remain unverified. [ndstool secure-area calculation](https://github.com/devkitPro/ndstool/blob/master/source/encryption.cpp)
+
+Apache’s later 128 KiB ExpressCard dump (SHA-256 `3052bb013324a05322ffc184202439e9ccaefa235248c2a72b5a1aea53b482d4`) zeroes `0x4008–0x400F` in the logical ROM. Those are the only changes in its captured `0x4000–0x7FFF` secure-area window compared with the previous edited sample. The first eight bytes still read `FF DE FF E7 FF DE FF E7`, and the 64-byte ARM7 stub at `0x8800` is unchanged. The regular header CRC matches (`0x590D`). The secure-area header stores `0x3682`, while the directly captured bytes calculate to `0xBF15`. The BIOS overwrites the first eight secure-area bytes after a successful boot, so the CRC of the captured bytes is not proof that the card supplies the wrong CRC at boot. Apache confirmed DS Lite and DSi boot, but the cart still did not appear on 3DS. This does not identify the 3DS rejection cause or establish a safe logical-ROM-to-raw-NAND write procedure. [GBATEK secure area notes](https://problemkaputt.de/gbatek.htm)
 
 ### Save a DS session log
 

@@ -39,7 +39,7 @@ def check_block0_backup(main_dump, spare_dump, info_path):
         manifest = source.read(manifest_format.size + 1)
     if len(manifest) != manifest_format.size:
         raise ValueError("backup.info has an unexpected length.")
-    tag, nand_id, pages, main_crc, spare_crc, _, anchor_80000 = manifest_format.unpack(manifest)
+    tag, nand_id, pages, main_crc, spare_crc, anchor_40000, anchor_80000 = manifest_format.unpack(manifest)
     if tag != b"NRIOB01\0" or pages not in (64, 128):
         raise ValueError("backup.info has an invalid signature or page count.")
 
@@ -67,11 +67,12 @@ def check_block0_backup(main_dump, spare_dump, info_path):
     if main:
         address, = struct.unpack_from("<I", main, PRIMARY_TABLE)
         lines.append(f"First primary map entry in the main file: 0x{address:X}.")
-        if (address == USUAL_UDISK_START and anchor_80000[:4] == b"\x2e\x00\x00\xea" and
-                anchor_80000[12:16] == b"####"):
-            size, = struct.unpack_from("<I", anchor_80000, 0x80)
-            lines.append(f"The manifest captured a compact ROM header at 0x80000 "
-                         f"with declared size 0x{size:X}.")
+        anchor = {SECONDARY_TABLE: anchor_40000, USUAL_UDISK_START: anchor_80000}.get(address)
+        if (anchor and is_compact_safe_mode(anchor) and
+                crc16(anchor[:0x15E]) == struct.unpack_from("<H", anchor, 0x15E)[0]):
+            size, = struct.unpack_from("<I", anchor, 0x80)
+            lines.append(f"The manifest captured a compact primary ROM header at 0x{address:X} "
+                         f"with declared size 0x{size:X} (sector CRC32 {zlib.crc32(anchor):08X}).")
     return "\n".join(lines), valid
 
 
@@ -351,11 +352,47 @@ def inspect_boot(main_dump, spare_dump):
     return "\n".join(lines)
 
 
+def inspect_surviving_boot(main_dump, pages):
+    """Match the on-console Check Cart windows without loading the whole NAND."""
+    samples = [(0x40000, 512), (0x40000, 0x20000), (0x80000, 512)]
+    if pages == 64:
+        samples.insert(0, (0x20000, 512))
+
+    lines = [f"Read-only windows outside block 0 ({pages} pages)."]
+    with main_dump.open("rb") as source:
+        prefix = source.read(SECTOR_SIZE)
+        if prefix[3:11] == b"DSGBAFLS":
+            raise ValueError("Use a physical main dump, not a DSGBAFLS volume.")
+        source.seek(SECONDARY_TABLE - 4)
+        skip, entry = source.read(4), source.read(4)
+        if skip != b"QAFE" and len(entry) == 4:
+            address, = struct.unpack("<I", entry)
+            if 0x60000 <= address < 0xFFFFFFFF and address != 0x80000 and address % MAPPED_BLOCK_SIZE == 0:
+                samples.append((address, 512))
+        for address, size in samples:
+            source.seek(address)
+            sector = source.read(size)
+            label = f"0x{address:06X} + 0x{size:X}"
+            if len(sector) != size:
+                lines.append(f"{label}: outside supplied dump")
+            elif sector.count(255) == size:
+                lines.append(f"{label}: all FF")
+            elif sector.count(0) == size:
+                lines.append(f"{label}: all 00")
+            else:
+                lines.append(f"{label}: CRC32 {zlib.crc32(sector):08X}, "
+                             f"SHA-256 {hashlib.sha256(sector).hexdigest()}")
+    lines.append("Matching fingerprints do not establish a safe restore.")
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("main_dump", type=Path, help="main-only dump from Main: read only")
-    parser.add_argument("spare_dump", type=Path, help="spare-only dump from Spare: read only")
+    parser.add_argument("spare_dump", type=Path, nargs="?", help="spare-only dump from Spare: read only")
     safe_mode = parser.add_mutually_exclusive_group()
+    safe_mode.add_argument("--survivors", action="store_true",
+                           help="fingerprint main windows outside block 0 (no spare required)")
     safe_mode.add_argument("--backup-info", type=Path, help="check a block-0 backup against its backup.info")
     safe_mode.add_argument("--safe-mode-rom", type=Path, help="original safe-mode ROM from the target cart")
     safe_mode.add_argument("--prepare-safe-mode", type=Path, metavar="OUTPUT",
@@ -365,14 +402,18 @@ def main():
     candidate.add_argument("--replacement-rom", type=Path, help="check a different ROM against the original mapping")
     parser.add_argument("--pages-per-block", type=int, choices=(64, 128), help="erase-buffer page count from the DS log")
     args = parser.parse_args()
-    if (args.safe_mode_rom or args.prepare_safe_mode) and args.pages_per_block is None:
-        parser.error("safe-mode actions require --pages-per-block from the DS log")
+    if (args.safe_mode_rom or args.prepare_safe_mode or args.survivors) and args.pages_per_block is None:
+        parser.error("this action requires --pages-per-block from the DS log")
+    if not args.survivors and args.spare_dump is None:
+        parser.error("spare_dump is required except with --survivors")
     if (args.patched_rom or args.replacement_rom) and not args.safe_mode_rom:
         parser.error("--patched-rom and --replacement-rom each require --safe-mode-rom")
-    if args.pages_per_block and not (args.safe_mode_rom or args.prepare_safe_mode):
-        parser.error("--pages-per-block requires a safe-mode action")
+    if args.pages_per_block and not (args.safe_mode_rom or args.prepare_safe_mode or args.survivors):
+        parser.error("--pages-per-block requires a safe-mode or survivor action")
     try:
-        if args.backup_info:
+        if args.survivors:
+            print(inspect_surviving_boot(args.main_dump, args.pages_per_block))
+        elif args.backup_info:
             report, valid = check_block0_backup(args.main_dump, args.spare_dump, args.backup_info)
             print(report)
             if not valid:

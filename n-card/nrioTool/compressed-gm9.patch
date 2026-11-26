@@ -1,0 +1,114 @@
+--- a/Makefile
++++ b/Makefile
+@@ -14,6 +14,7 @@
+ # specify a directory which contains the nitro filesystem
+ # this is relative to the Makefile
+ NITRO_FILES := nrioFiles
++NITRO_STAGE := build/nitrofs
+ 
+ 
+ # These set the information text in the nds file
+@@ -39,11 +40,12 @@
+ 	$(MAKE) -C arm9
+ 
+ #---------------------------------------------------------------------------------
+-$(TARGET).nds : $(NITRO_FILES) arm7/$(TARGET).elf arm9/$(TARGET).elf nrio-unified.dldi
++$(TARGET).nds : $(NITRO_FILES) $(wildcard $(NITRO_FILES)/*) prepare_nitrofs.py arm7/$(TARGET).elf arm9/$(TARGET).elf nrio-unified.dldi
++	@python3 prepare_nitrofs.py "$(CURDIR)"
+ 	@ndstool	-c $@ -7 arm7/$(TARGET).elf -9 arm9/$(TARGET).elf \
+ 				-b $(CURDIR)/icon.bmp "NAND Cart Tool;For N-Card/Clones;By Apache Thunder" \
+ 				-g DSNR 01 "NRIOTOOL" -z 80040000 -u 00030004 -a 00000138 -p 0001 \
+-				-d $(NITRO_FILES)
++				-d $(NITRO_STAGE)
+ 	@dlditool nrio-unified.dldi $@
+ 
+ data:
+@@ -73,5 +75,6 @@
+ 	$(MAKE) -C arm7 clean
+ 	$(MAKE) -C bootloader clean
+ 	rm -rf data
++	rm -rf $(NITRO_STAGE)
+ 	rm -f $(TARGET).nds
+ 
+--- a/arm9/source/main.cpp
++++ b/arm9/source/main.cpp
+@@ -23,6 +23,7 @@
+ #include "srl-dump.h"
+ #include "file-browser.h"
+ #include "button-legend.h"
++#include "gm9-bundle.h"
+ extern "C" const u8 usb_mount_bin[] __attribute__((weak));
+ extern "C" const u8 usb_mount_bin_end[] __attribute__((weak));
+ 
+@@ -367,48 +368,39 @@
+ 
+ void DoGM9iBoot() {
+ 	consoleClear();
+-	if(access("sd:/nrioFiles/GM9Nrio.nds", F_OK) != 0 && nitroFSMounted) {
+-		FILE *src = fopen("nitro:/GM9Nrio.nds", "rb");
++	const char* filename = "sd:/nrioFiles/GM9Nrio.nds";
++	if (access(filename, F_OK) != 0 && nitroFSMounted) {
++		const char* partial = "sd:/nrioFiles/GM9Nrio.nds.part";
++		FILE *src = fopen("nitro:/GM9Nrio.z", "rb");
+ 		if (src) {
+-			FILE *dest = fopen("sd:/nrioFiles/GM9Nrio.nds", "wb");
++			printf("Unpacking GodMode9Nrio to SD.\nPlease wait...\n");
++			FILE *dest = fopen(partial, "wb");
+ 			if (dest) {
+-				fseek(src, 0, SEEK_END);
+-				u32 fSize = ftell(src);
+-				fseek(src, 0, SEEK_SET);
+-				if (fSize < MAXFILESIZE && fSize > 0) {
+-					printf("WARNING: GM9Nrio not found!\n");
+-					printf("Trying to use NitroFS copy.\n\n");
+-					printf("Please wait...\n");
+-					bool copied = CopyBundledFile(src, dest, fSize);
+-					fclose(src);
+-					if (fclose(dest)) copied = false;
+-					if (!copied) remove("sd:/nrioFiles/GM9Nrio.nds");
++				bool copied = nrio_unpack_gm9(src, dest);
++				if (fclose(dest)) copied = false;
++				if (copied && access(filename, F_OK) != 0)
++					copied = rename(partial, filename) == 0;
++				else
++					copied = false;
++				if (!copied) {
++					remove(partial);
++					puts("Could not unpack GodMode9Nrio.");
+ 				}
+ 			}
++			fclose(src);
+ 		}
+ 	}
+-	if (access("sd:/nrioFiles/GM9Nrio.nds", F_OK) == 0) {
+-		struct stat st;
+-		char filePath[PATH_MAX];
+-		int pathLen;
+-		const char* filename = "sd:/nrioFiles/GM9Nrio.nds";
+-		if (stat (filename, &st) < 0) { ErrorState = true; return; }
+-		if (!getcwd (filePath, PATH_MAX)) { ErrorState = true; return; }
+-		pathLen = strlen(filename);
+-		strcpy (filePath + pathLen, filename);
++	struct stat st;
++	if (stat(filename, &st) == 0 && S_ISREG(st.st_mode)) {
+ 		runLaunchEngine(-1, st.st_ino, true);
+ 		ErrorState = true;
+ 		return;
+-	} else {
+-		printf("ERROR: GM9Nrio.nds not found!");
+-		printf("\n\n\nPress [A] to abort.\n");
+-		while(1) {
+-			swiWaitForVBlank();
+-			scanKeys();
+-			if(keysDown() & KEY_A)return;
+-		}
+ 	}
+-	return;
++	puts("GM9Nrio.nds not found.\n\nPress A to return.");
++	do {
++		swiWaitForVBlank();
++		scanKeys();
++	} while (!(keysDown() & KEY_A));
+ }
+ 
+ void DoSaveTestBoot() {
